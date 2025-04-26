@@ -1,0 +1,14 @@
+.env
+.env.local 
+.env.development.local
+.env.test.local
+.env.production.local
+
+__pycache__
+api/__pycache__
+api/endpoints/__pycache__
+data/
+models/__pycache__
+services/__pycache__
+
+venv/
