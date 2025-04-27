@@ -1,21 +1,24 @@
 from pydantic import BaseModel
-from typing import List, Optional
-
-
-class Message(BaseModel):
-    role: str  # "user" ou "assistant"
-    content: str
-
-
-class Conversation(BaseModel):
-    messages: List[Message]
-
+from typing import List, Optional, Dict, Any, Union
 
 class QueryRequest(BaseModel):
     query: str
-    conversation_history: Optional[List[Message]] = []
-
+    conversation_history: Optional[List[dict]] = []
 
 class QueryResponse(BaseModel):
     response: str
-    sources: Optional[List[str]] = None
+    sources: List[str] = []
+
+class Document(BaseModel):
+    text: str
+    metadata: Optional[Dict[str, Any]] = None
+
+class DocumentBatch(BaseModel):
+    documents: List[Union[str, Document]]
+    metadata: Optional[List[Dict[str, Any]]] = None
+
+class DeleteRequest(BaseModel):
+    ids: List[int]
+
+class ResetRequest(BaseModel):
+    confirm: bool = False

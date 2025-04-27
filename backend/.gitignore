@@ -5,10 +5,12 @@
 .env.production.local
 
 __pycache__
+routes/__pycache__
 api/__pycache__
 api/endpoints/__pycache__
 data/
 models/__pycache__
 services/__pycache__
+
 
 venv/

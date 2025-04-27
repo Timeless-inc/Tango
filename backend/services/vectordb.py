@@ -1,9 +1,8 @@
-import numpy as np
 import os
-import pickle
-from sentence_transformers import SentenceTransformer
 import json
-
+import pickle
+import numpy as np
+from sentence_transformers import SentenceTransformer
 
 class VectorDBService:
     def __init__(self, collection_name="tango_knowledge"):
@@ -21,51 +20,93 @@ class VectorDBService:
         # Inicializa o modelo de embeddings
         self.model = SentenceTransformer('intfloat/multilingual-e5-large')
         
-        # Carrega ou cria a base de vetores
+        # Inicializa os atributos
+        self._vectors = None
+        self._documents = None
+        self._metadata = None
+        
+    @property
+    def vectors(self):
+        if self._vectors is None:
+            self._load_data()
+        return self._vectors
+    
+    @vectors.setter
+    def vectors(self, value):
+        self._vectors = value
+    
+    @property
+    def documents(self):
+        if self._documents is None:
+            self._load_data()
+        return self._documents
+    
+    @documents.setter
+    def documents(self, value):
+        self._documents = value
+    
+    @property
+    def metadata(self):
+        if self._metadata is None:
+            self._load_data()
+        return self._metadata
+    
+    @metadata.setter
+    def metadata(self, value):
+        self._metadata = value
+    
+    def _load_data(self):
+        """Carrega os dados do disco apenas quando necessário."""
         if os.path.exists(self.vectors_path) and os.path.exists(self.documents_path):
-            self.vectors = np.load(self.vectors_path)
+            self._vectors = np.load(self.vectors_path)
             with open(self.documents_path, 'rb') as f:
-                self.documents = pickle.load(f)
-            
-            # Carrega os metadados se existirem
+                self._documents = pickle.load(f)
+                
             if os.path.exists(self.metadata_path):
                 with open(self.metadata_path, 'r', encoding='utf-8') as f:
-                    self.metadata = json.load(f)
+                    self._metadata = json.load(f)
             else:
-                self.metadata = [None] * len(self.documents)
+                self._metadata = [None] * len(self._documents)
                 
-            print(f"Coleção '{collection_name}' carregada com sucesso. Documentos: {len(self.documents)}")
+            print(f"Coleção '{self.collection_name}' carregada com sucesso. Documentos: {len(self._documents)}")
         else:
             # Cria nova base vazia
-            self.vectors = np.array([]).reshape(0, self.model.get_sentence_embedding_dimension())
-            self.documents = []
-            self.metadata = []
-            print(f"Coleção '{collection_name}' criada com sucesso.")
+            self._vectors = np.array([]).reshape(0, self.model.get_sentence_embedding_dimension())
+            self._documents = []
+            self._metadata = []
+            print(f"Coleção '{self.collection_name}' criada com sucesso.")
     
-    def add_documents(self, texts, metadatas=None, ids=None):
-        """Adiciona documentos à base de conhecimento."""
-        if not texts:
-            return 0
-            
-        # Prepara metadados
+    def add_documents(self, documents, metadatas=None):
+        """Adiciona documentos à coleção."""
+        if not documents:
+            return {"ids": []}
+        
+        # Verifica se metadatas foi fornecido, se não, cria lista de None
         if metadatas is None:
-            metadatas = [None] * len(texts)
+            metadatas = [None] * len(documents)
         
-        # Gera embeddings para os textos
-        embeddings = self.model.encode(texts)
+        # Gera embeddings para os novos documentos
+        new_embeddings = self.model.encode(documents)
         
-        # Adiciona os vetores à base
-        self.vectors = np.vstack([self.vectors, embeddings]) if self.vectors.size else embeddings
+        # Normaliza os embeddings para distância coseno
+        norms = np.linalg.norm(new_embeddings, axis=1, keepdims=True)
+        normalized_embeddings = np.divide(new_embeddings, norms, where=norms!=0)
         
-        # Armazena os documentos e metadados
-        for i, (text, metadata) in enumerate(zip(texts, metadatas)):
-            self.documents.append(text)
-            self.metadata.append(metadata)
+        # Adiciona os novos documentos e embeddings à coleção
+        new_ids = list(range(len(self.documents), len(self.documents) + len(documents)))
         
-        # Salva os dados
-        self._save_data()
+        if len(self.vectors) == 0:
+            self.vectors = normalized_embeddings
+        else:
+            self.vectors = np.vstack([self.vectors, normalized_embeddings])
         
-        return len(texts)
+        self.documents.extend(documents)
+        self.metadata.extend(metadatas)
+        
+        # Salva a coleção atualizada
+        self._save()
+        
+        return {"ids": new_ids}
     
     def query(self, query_text, n_results=3):
         """Realiza consulta de similaridade semântica."""
@@ -90,25 +131,44 @@ class VectorDBService:
             # Calcula similaridade coseno
             similarities = np.dot(normalized_vectors, query_embedding)
             
-            # Encontra os N documentos mais similares
-            n_results = min(n_results, len(self.documents))
-            indices = np.argsort(-similarities)[:n_results]
-            distances = 1 - similarities[indices]  # Converte similaridade para distância
+            # Obtém os índices dos documentos mais similares
+            top_indices = np.argsort(similarities)[::-1][:n_results]
             
-            # Prepara os resultados
-            results = {
-                "documents": [[self.documents[idx] for idx in indices]],
-                "ids": [[str(idx) for idx in indices]],
-                "metadatas": [[self.metadata[idx] for idx in indices] if self.metadata else None],
-                "distances": [distances.tolist()]
+            return {
+                "documents": [self.documents[i] for i in top_indices],
+                "ids": top_indices.tolist(),
+                "metadatas": [self.metadata[i] for i in top_indices],
+                "distances": [float(similarities[i]) for i in top_indices]
             }
-            
-            return results
         
         return {"documents": [], "ids": [], "metadatas": [], "distances": []}
     
-    def _save_data(self):
-        """Salva os vetores, documentos e metadados no disco."""
+    def delete(self, ids):
+        """Remove documentos da coleção pelos IDs."""
+        if not ids or not self.documents:
+            return {"success": False}
+        
+        # Converte para conjunto para operações mais rápidas
+        ids_set = set(ids)
+        
+        # Cria máscaras para remover os itens
+        mask = np.ones(len(self.documents), dtype=bool)
+        for idx in ids_set:
+            if 0 <= idx < len(self.documents):
+                mask[idx] = False
+        
+        # Aplica as máscaras
+        self.vectors = self.vectors[mask]
+        self.documents = [doc for i, doc in enumerate(self.documents) if mask[i]]
+        self.metadata = [meta for i, meta in enumerate(self.metadata) if mask[i]]
+        
+        # Salva a coleção atualizada
+        self._save()
+        
+        return {"success": True}
+    
+    def _save(self):
+        """Salva a coleção no disco."""
         np.save(self.vectors_path, self.vectors)
         
         with open(self.documents_path, 'wb') as f:
@@ -116,3 +176,16 @@ class VectorDBService:
             
         with open(self.metadata_path, 'w', encoding='utf-8') as f:
             json.dump(self.metadata, f, ensure_ascii=False, indent=2)
+            
+        print(f"Coleção '{self.collection_name}' salva com sucesso. Documentos: {len(self.documents)}")
+        
+    def reset(self):
+        """Reinicia a coleção, removendo todos os documentos."""
+        self.vectors = np.array([]).reshape(0, self.model.get_sentence_embedding_dimension())
+        self.documents = []
+        self.metadata = []
+        
+        # Salva a coleção vazia
+        self._save()
+        
+        return {"success": True}
