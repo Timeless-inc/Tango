@@ -8,7 +8,7 @@ Na aba "Body", selecione "JSON"
 Adicione o seguinte JSON
 
 [
-  "O Tango é um assistente virtual criado para ajudar as pessoas.",
+  "O Mango é um assistente virtual criado para ajudar as pessoas.",
   "IFPE significa Instituto Federal de Educação, Ciência e Tecnologia de Pernambuco.",
   "A inteligência artificial é a simulação de processos de inteligência humana por sistemas de computador."
 ]

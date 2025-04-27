@@ -8,7 +8,7 @@ import json
 class VectorDBService:
     def __init__(self, collection_name="tango_knowledge"):
         self.collection_name = collection_name
-        self.data_dir = "./data/simple_vectors"
+        self.data_dir = "./data/vectors"
         
         # Cria o diretório de dados se não existir
         os.makedirs(self.data_dir, exist_ok=True)

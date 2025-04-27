@@ -21,7 +21,7 @@ class AIService:
             # Encontrou informações relevantes
             contexts = results['documents'][0]
             response = {
-                "response": f"Com base no que sei: {' '.join(contexts[:2])}",
+                "response": f"{' '.join(contexts[:2])}",
                 "sources": results['documents'][0][:2]
             }
         else:
