@@ -1,28 +1,30 @@
 import React from 'react';
-import { Card } from "@/components/ui/card";
 
-export function ChatMessage({ message, isUser }) {
+export function ChatMessage({ role, content }) {
+  // Verificação de segurança para valores undefined ou nulos
+  if (!content) {
+    return null; // Não renderiza nada se não houver conteúdo
+  }
+
+  const isUser = role === 'user';
+  
   return (
-    <div className={`flex ${isUser ? 'justify-end' : 'justify-start'} mb-4`}>
-      <Card className={`p-3 max-w-[85%] ${
-        isUser 
-          ? 'bg-zinc-700 text-white' 
-          : 'bg-zinc-800 text-zinc-100'
-      }`}>
-        <div className="prose prose-sm dark:prose-invert">
-          {message.content}
+    <div className={`scrollbar-hide flex items-start my-4 ${isUser ? 'justify-end' : ''}`}>
+      {!isUser && (
+        <div className="w-8 h-8 rounded-full bg-zinc-800 flex items-center justify-center mr-4">
+          <span className="text-sm">🥭</span>
         </div>
-        {message.sources && message.sources.length > 0 && (
-          <div className="mt-2 pt-2 border-t border-zinc-600 text-xs text-zinc-400">
-            <p className="font-medium">Fontes:</p>
-            <ul className="mt-1 space-y-1">
-              {message.sources.map((source, idx) => (
-                <li key={idx}>{source.document_name}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-      </Card>
+      )}
+      <div className={`max-w-3/4 rounded-lg p-3 ${isUser 
+        ? 'bg-blue-600 text-white' 
+        : 'bg-zinc-800 text-zinc-200'}`}>
+        {content}
+      </div>
+      {isUser && (
+        <div className="w-8 opacity-0 ml-4">
+          <span className="text-sm">👤</span>
+        </div>
+      )}
     </div>
   );
 }

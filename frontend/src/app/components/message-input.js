@@ -1,61 +1,40 @@
-'use client';
-
 import { useState } from 'react';
-import { Button } from "@/components/ui/button";
-import { SendIcon, Mic, Paperclip } from "lucide-react";
 
-export function MessageInput({ onSendMessage, isLoading }) {
-  const [input, setInput] = useState('');
+export function MessageInput({ onSendMessage, disabled }) {
+  const [inputValue, setInputValue] = useState('');
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (!input.trim() || isLoading) return;
-    
-    onSendMessage(input);
-    setInput('');
+    if (inputValue.trim()) {
+      onSendMessage(inputValue);
+      setInputValue('');
+    }
   };
 
   return (
-    <form onSubmit={handleSubmit} className="relative">
-      <div className="flex items-center gap-2 bg-zinc-800 rounded-lg p-1 border border-zinc-700">
-        <Button 
-          type="button" 
-          size="icon" 
-          variant="ghost" 
-          className="text-zinc-400 hover:text-zinc-300 rounded-full h-8 w-8">
-          <Paperclip className="h-4 w-4" />
-        </Button>
-        
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Send a message..."
-          className="flex-1 bg-transparent border-none focus:outline-none text-zinc-100 placeholder:text-zinc-500 text-sm py-2 px-1"
-          disabled={isLoading}
-        />
-        
-        <Button 
-          type="button" 
-          size="icon" 
-          variant="ghost" 
-          className="text-zinc-400 hover:text-zinc-300 rounded-full h-8 w-8">
-          <Mic className="h-4 w-4" />
-        </Button>
-        
-        <Button
-          type="submit"
-          disabled={isLoading || !input.trim()}
-          size="icon"
-          className={`rounded-full h-8 w-8 ${
-            isLoading || !input.trim() 
-              ? 'bg-zinc-700 text-zinc-500' 
-              : 'bg-zinc-600 hover:bg-zinc-500 text-white'
-          }`}
+    <form onSubmit={handleSubmit} className="flex items-center gap-2">
+      <input
+        type="text"
+        value={inputValue}
+        onChange={(e) => setInputValue(e.target.value)}
+        placeholder="Digite sua mensagem..."
+        disabled={disabled}
+        className="flex-1 rounded-lg py-2 px-4 bg-zinc-800 text-white border border-zinc-700 focus:outline-none focus:border-zinc-500"
+      />
+      <button
+        type="submit"
+        disabled={!inputValue.trim() || disabled}
+        className="bg-blue-600 text-white p-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="currentColor"
+          className="w-5 h-5"
         >
-          <SendIcon className="h-4 w-4" />
-        </Button>
-      </div>
+          <path d="M3.478 2.405a.75.75 0 00-.926.94l2.432 7.905H13.5a.75.75 0 010 1.5H4.984l-2.432 7.905a.75.75 0 00.926.94 60.519 60.519 0 0018.445-8.986.75.75 0 000-1.218A60.517 60.517 0 003.478 2.405z" />
+        </svg>
+      </button>
     </form>
   );
 }

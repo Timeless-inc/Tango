@@ -1,7 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends
 from models.schemas import QueryRequest, QueryResponse, DocumentBatch, DeleteRequest, ResetRequest, Document
 from services.aiservice import AIService
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Union
 
 router = APIRouter()
 ai_service = AIService()
@@ -75,3 +75,28 @@ async def reset_knowledge_base(request: ResetRequest):
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Erro ao reiniciar a base de conhecimento: {str(e)}")
+
+# Adicione esta nova rota após as outras rotas de documentos existentes
+
+@router.get("/documents/list", response_model=Dict[str, List[Union[str, Dict[str, Any]]]])
+async def list_documents():
+    """
+    Lista todos os documentos da base de conhecimento.
+    """
+    try:
+        # Obtém os documentos e seus metadados do serviço VectorDB
+        documents = ai_service.vector_db.documents
+        metadata = ai_service.vector_db.metadata
+        
+        # Prepara a resposta com documentos e IDs
+        doc_list = []
+        for i, doc in enumerate(documents):
+            doc_list.append({
+                "id": i,
+                "content": doc,
+                "metadata": metadata[i] if metadata and i < len(metadata) else None
+            })
+            
+        return {"documents": doc_list}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Erro ao listar documentos: {str(e)}")

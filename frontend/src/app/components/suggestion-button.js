@@ -1,15 +1,10 @@
-import { Button } from "@/components/ui/button";
-
 export function SuggestionButton({ text, onClick }) {
   return (
-    <Button 
-      variant="outline" 
-      className="bg-zinc-800 text-zinc-100 hover:bg-zinc-700 border-zinc-700 h-auto py-3 px-3 text-left justify-start font-normal"
+    <button
       onClick={() => onClick(text)}
+      className="text-sm bg-zinc-800 hover:bg-zinc-700 text-zinc-300 py-1 px-3 rounded-full transition-colors"
     >
-      <div className="flex flex-col">
-        <span className="text-sm">{text}</span>
-      </div>
-    </Button>
+      {text}
+    </button>
   );
 }

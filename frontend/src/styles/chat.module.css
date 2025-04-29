@@ -42,3 +42,18 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Adicione estas regras para esconder a barra de rolagem */
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+
+/* Para Firefox */
+.scrollbar-hide {
+  scrollbar-width: none;
+}
+
+/* Para IE e Edge */
+.scrollbar-hide {
+  -ms-overflow-style: none;
+}

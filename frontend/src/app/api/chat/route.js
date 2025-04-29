@@ -3,6 +3,7 @@ import { NextResponse } from 'next/server';
 export async function POST(request) {
   try {
     const body = await request.json();
+    console.log("Enviando consulta para o backend:", body.query);
     
     const response = await fetch('http://localhost:8000/api/query', {
       method: 'POST',
@@ -20,11 +21,26 @@ export async function POST(request) {
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    console.log("Resposta do backend:", data);
+    
+    // Mapeia os campos do backend para o formato esperado pelo frontend
+    const mappedResponse = {
+      // Se o backend retornar 'response', use-o como 'answer'
+      answer: data.response || data.answer || "Não foi possível obter uma resposta.",
+      // Mantém quaisquer outros campos que possam ser úteis
+      sources: data.sources || [],
+      // Adicione outros mapeamentos conforme necessário
+    };
+    
+    console.log("Resposta mapeada para o frontend:", mappedResponse);
+    return NextResponse.json(mappedResponse);
   } catch (error) {
     console.error('Error proxying to backend:', error);
     return NextResponse.json(
-      { error: 'Failed to connect to backend service' },
+      { 
+        error: 'Failed to connect to backend service',
+        details: error.message 
+      },
       { status: 500 }
     );
   }
