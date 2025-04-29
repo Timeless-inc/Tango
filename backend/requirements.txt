@@ -5,3 +5,5 @@ numpy>=1.20.0
 faiss-cpu>=1.7.0
 sentence-transformers>=2.2.2
 python-multipart
+joblib>=1.1.0
+nltk>=3.6.5
