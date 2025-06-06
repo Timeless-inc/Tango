@@ -121,6 +121,15 @@
   }
 }
 
+@layer utilities {
+  .line-clamp-2 {
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+  }
+}
+
 /* Adicione estas regras para esconder a barra de rolagem */
 .scrollbar-hide::-webkit-scrollbar {
   display: none;

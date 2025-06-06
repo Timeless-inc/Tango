@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { LogOut } from 'lucide-react';
 import { KnowledgeList } from '../components/knowledge-list';
+import { WebsiteScraper } from '../components/website-scraper';
 import { deleteCookie, getCookie } from 'cookies-next';
 
 export default function AdminPage() {
@@ -106,6 +107,15 @@ export default function AdminPage() {
     }
   };
 
+  // Callback para quando o scraping é concluído
+  const handleScrapingComplete = (data) => {
+    fetchDocuments(); // Recarrega a lista de documentos
+    setMessage({ 
+      text: `Website processado! ${data.documents_added} documentos adicionados.`, 
+      type: 'success' 
+    });
+  };
+
   // Fazer logout
   const handleLogout = () => {
     deleteCookie('admin_token');
@@ -126,7 +136,7 @@ export default function AdminPage() {
 
   return (
     <div className="min-h-screen bg-black text-white p-6">
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-6">
           <h1 className="text-2xl font-bold">Administração do Mango</h1>
           <Button 
@@ -147,7 +157,7 @@ export default function AdminPage() {
           </div>
         )}
         
-        <div className="grid gap-6 md:grid-cols-2">
+        <div className="grid gap-6 lg:grid-cols-3">
           {/* Formulário para adicionar documento */}
           <Card className="bg-zinc-900 border-zinc-800">
             <CardHeader>
@@ -174,6 +184,9 @@ export default function AdminPage() {
               </form>
             </CardContent>
           </Card>
+          
+          {/* Componente de Web Scraping */}
+          <WebsiteScraper onScrapingComplete={handleScrapingComplete} />
           
           {/* Lista de documentos */}
           <Card className="bg-zinc-900 border-zinc-800">

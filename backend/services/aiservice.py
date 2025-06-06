@@ -1,12 +1,31 @@
 from services.vectordb import VectorDBService
-from models.schemas import QueryResponse
+from sentence_transformers import SentenceTransformer
 import random
 import re
 
 class AIService:
     def __init__(self):
         self.vector_db = VectorDBService()
-    
+        
+    def seed_knowledge_base(self, documents):
+        """
+        Adiciona documentos à base de conhecimento.
+        """
+        print(f"Adicionando {len(documents)} documentos à base de conhecimento")
+        
+        if not documents:
+            print("Nenhum documento fornecido")
+            return {"ids": []}
+        
+        try:
+            result = self.vector_db.add_documents(documents)
+            print(f"Documentos adicionados com sucesso. IDs: {result.get('ids', [])}")
+            return result
+        except Exception as e:
+            print(f"Erro ao adicionar documentos: {str(e)}")
+            raise e
+
+    # ... resto da classe mantém igual ...
     def answer_query(self, query, conversation_history=None):
         """
         Responde à consulta do usuário, considerando o histórico de conversas
@@ -48,27 +67,21 @@ class AIService:
                 for i, doc in enumerate(results['documents']):
                     if results['distances'][i] > high_threshold:
                         filtered_docs.append(doc)
-                        
-                # Se ainda não temos documentos, usamos os com maior score (até 3)
-                if not filtered_docs and results['documents']:
-                    sorted_indices = sorted(range(len(results['distances'])), 
-                                          key=lambda i: results['distances'][i], 
-                                          reverse=True)[:3]
-                    filtered_docs = [results['documents'][i] for i in sorted_indices]
             
-            # Gera resposta com base nos documentos filtrados
+            # Se ainda não temos documentos relevantes, relaxa o threshold
+            if not filtered_docs:
+                threshold = 0.5
+                for i, doc in enumerate(results['documents']):
+                    if results['distances'][i] > threshold:
+                        filtered_docs.append(doc)
+            
             if filtered_docs:
-                # Prepara o contexto para o LLM
-                context = "\n".join(filtered_docs)
-                
-                # Instruções para o modelo formatar a resposta
+                # Prepara prompt para modelo de linguagem
                 prompt = f"""
-                Com base nas seguintes informações:
+                Baseado nas seguintes informações:
+                {' '.join(filtered_docs)}
                 
-                {context}
-                
-                Responda à seguinte pergunta de forma natural, como um assistente educacional amigável:
-                {query}
+                Responda à pergunta: {query}
                 
                 Forneça uma resposta concisa e informativa, sem mencionar explicitamente que está consultando documentos.
                 Não invente informações que não estejam no contexto fornecido.
@@ -105,7 +118,7 @@ class AIService:
             }
             
         return response
-        
+
     def _format_response(self, prompt, documents, query):
         """
         Método aprimorado para formatar respostas de maneira mais natural e estruturada em parágrafos.
@@ -304,9 +317,3 @@ class AIService:
                         formatted_response = formatted_response[:797] + "..."
             
             return formatted_response
-    
-    def seed_knowledge_base(self, documents):
-        """
-        Adiciona novos documentos à base de conhecimento.
-        """
-        return self.vector_db.add_documents(documents)
