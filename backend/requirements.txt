@@ -12,3 +12,5 @@ beautifulsoup4>=4.11.0
 html2text>=2020.1.16
 validators>=0.20.0
 lxml>=4.9.0
+PyPDF2==3.0.1
+python-multipart==0.0.6

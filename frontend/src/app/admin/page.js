@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { LogOut } from 'lucide-react';
 import { KnowledgeList } from '../components/knowledge-list';
 import { WebsiteScraper } from '../components/website-scraper';
+import { PDFUploader } from '../components/pdf-uploader';
 import { deleteCookie, getCookie } from 'cookies-next';
 
 export default function AdminPage() {
@@ -116,6 +117,15 @@ export default function AdminPage() {
     });
   };
 
+  // Callback para quando o upload de PDF é concluído
+  const handlePDFUploadComplete = (data) => {
+    fetchDocuments(); // Recarrega a lista de documentos
+    setMessage({ 
+      text: `PDF processado! ${data.documents_added} documentos adicionados de ${data.total_pages} páginas.`, 
+      type: 'success' 
+    });
+  };
+
   // Fazer logout
   const handleLogout = () => {
     deleteCookie('admin_token');
@@ -184,6 +194,9 @@ export default function AdminPage() {
               </form>
             </CardContent>
           </Card>
+          
+          {/* Componente de Upload de PDF */}
+          <PDFUploader onUploadComplete={handlePDFUploadComplete} />
           
           {/* Componente de Web Scraping */}
           <WebsiteScraper onScrapingComplete={handleScrapingComplete} />
