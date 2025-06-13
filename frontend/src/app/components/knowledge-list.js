@@ -1,6 +1,6 @@
-import { Trash2, ExternalLink, FileText, Globe, File } from 'lucide-react';
-import { Button } from "@/components/ui/button";
 import { useState } from 'react';
+import { Button } from "@/components/ui/button";
+import { FileText, Globe, File, Trash2 } from 'lucide-react';
 import { ConfirmationModal } from './confirmation-modal';
 
 export function KnowledgeList({ documents, onDelete }) {
@@ -14,8 +14,10 @@ export function KnowledgeList({ documents, onDelete }) {
   
   if (!documents || documents.length === 0) {
     return (
-      <div className="text-center py-6 text-zinc-400">
-        Nenhum documento encontrado.
+      <div className="text-center py-8 text-zinc-400">
+        <FileText className="w-12 h-12 mx-auto mb-3 opacity-50" />
+        <p className="text-lg font-medium">Nenhum documento encontrado</p>
+        <p className="text-sm">Adicione documentos para começar</p>
       </div>
     );
   }
@@ -146,23 +148,25 @@ export function KnowledgeList({ documents, onDelete }) {
 
   // Prepara dados do modal
   const getModalData = () => {
-    if (modalState.type === 'group' && modalState.groupData) {
-      const group = modalState.groupData;
-      return {
-        title: "Remover fonte completa",
-        message: `Tem certeza que deseja remover todos os ${group.docs.length} chunks da fonte "${group.title}"? Esta ação não pode ser desfeita.`,
-        confirmText: `Remover ${group.docs.length} chunks`,
-        type: "danger"
-      };
-    } else {
-      return {
-        title: "Remover chunk",
-        message: "Tem certeza que deseja remover este chunk? Esta ação não pode ser desfeita.",
-        confirmText: "Remover chunk",
-        type: "danger"
-      };
-    }
-  };
+  if (modalState.type === 'group' && modalState.groupData) {
+    const group = modalState.groupData;
+    const chunkText = group.docs.length === 1 ? 'chunk' : 'chunks';
+    
+    return {
+      title: "Remover fonte completa",
+      message: `Tem certeza que deseja remover todos os ${group.docs.length} ${chunkText} da fonte "${group.title}"? Esta ação não pode ser desfeita.`,
+      confirmText: `Remover ${group.docs.length} ${chunkText}`,
+      type: "danger"
+    };
+  } else {
+    return {
+      title: "Remover chunk",
+      message: "Tem certeza que deseja remover este chunk? Esta ação não pode ser desfeita.",
+      confirmText: "Remover chunk",
+      type: "danger"
+    };
+  }
+};
 
   const modalData = getModalData();
 
@@ -170,43 +174,27 @@ export function KnowledgeList({ documents, onDelete }) {
     <>
       <div className="space-y-4 max-h-[500px] overflow-y-auto pr-2">
         {Object.entries(groupedDocs).map(([groupKey, group]) => (
-          <div key={groupKey} className="border border-zinc-700 rounded-lg overflow-hidden">
+          <div key={groupKey} className="border border-zinc-700/50 rounded-lg overflow-hidden bg-zinc-900/30">
             {/* Cabeçalho do grupo */}
-            <div className="bg-zinc-800 p-3 border-b border-zinc-700">
+            <div className="bg-zinc-800/50 p-4 border-b border-zinc-700/50">
               <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-3">
                   {getSourceIcon(group.type)}
                   <div>
-                    <p className="text-sm font-medium text-zinc-200">
+                    <p className="text-sm font-medium text-white">
                       {group.title}
                     </p>
-                    <div className="flex items-center gap-2 mt-1">
-                      <p className="text-xs text-zinc-400">
-                        {group.docs.length} chunk{group.docs.length > 1 ? 's' : ''}
-                      </p>
-                      <span className="text-xs px-2 py-1 rounded-full bg-zinc-700 text-zinc-300">
-                        {group.type === 'website' ? 'Website' : 
-                         group.type === 'pdf' ? 'PDF' : 'Manual'}
-                      </span>
-                      {group.type === 'website' && (
-                        <a 
-                          href={groupKey} 
-                          target="_blank" 
-                          rel="noopener noreferrer"
-                          className="flex items-center gap-1 text-xs text-blue-400 hover:text-blue-300"
-                        >
-                          <ExternalLink size={12} />
-                          Ver fonte
-                        </a>
-                      )}
-                    </div>
+                    <p className="text-xs text-zinc-400">
+                      {group.docs.length} {group.docs.length === 1 ? 'chunk' : 'chunks'}
+                    </p>
                   </div>
                 </div>
                 <Button
                   variant="ghost"
-                  size="sm"
-                  className="text-zinc-400 hover:text-red-400"
+                  size="icon"
+                  className="h-8 w-8 text-zinc-400 hover:text-red-400 hover:bg-red-900/20 transition-colors"
                   onClick={() => openGroupDeleteModal(group, groupKey)}
+                  style={{ boxShadow: 'none' }}
                 >
                   <Trash2 size={16} />
                 </Button>
@@ -214,33 +202,41 @@ export function KnowledgeList({ documents, onDelete }) {
             </div>
             
             {/* Lista de chunks */}
-            <div className="divide-y divide-zinc-700">
+            <div className="divide-y divide-zinc-700/50">
               {group.docs.map((doc, index) => (
-                <div key={doc.id} className="p-3 bg-zinc-900/50">
-                  <div className="flex items-start justify-between gap-2">
+                <div key={doc.id} className="p-4 hover:bg-zinc-800/30 transition-colors">
+                  <div className="flex items-start justify-between gap-3">
                     <div className="flex-1 min-w-0">
-                      <p className="text-xs text-zinc-500 mb-1">
-                        Chunk {index + 1} • {doc.content?.length || 0} caracteres
+                      <p className="text-xs text-zinc-500 mb-2 flex items-center gap-2">
+                        <span>Chunk {index + 1}</span>
+                        <span>•</span>
+                        <span>{doc.content?.length || 0} caracteres</span>
                         {group.type === 'pdf' && doc.full_content && (
                           <>
                             {(() => {
                               const pageMatch = doc.full_content.match(/Página:\s*(\d+)\s*de\s*(\d+)/);
-                              return pageMatch ? ` • Página ${pageMatch[1]}` : '';
+                              return pageMatch ? (
+                                <>
+                                  <span>•</span>
+                                  <span>Página {pageMatch[1]}</span>
+                                </>
+                              ) : null;
                             })()}
                           </>
                         )}
                       </p>
-                      <p className={`text-sm text-zinc-300 ${
-                        expandedDoc === doc.id ? '' : 'line-clamp-2'
+                      <p className={`text-sm text-zinc-300 leading-relaxed ${
+                        expandedDoc === doc.id ? '' : 'line-clamp-3'
                       }`}>
                         {expandedDoc === doc.id ? doc.full_content || doc.content : doc.content}
                       </p>
-                      {doc.content && doc.content.length > 100 && (
+                      {doc.content && doc.content.length > 150 && (
                         <Button
                           variant="ghost"
                           size="sm"
-                          className="text-xs text-zinc-400 hover:text-zinc-200 p-0 h-auto mt-1"
+                          className="text-xs text-zinc-400 hover:text-zinc-200 p-0 h-auto mt-2 font-medium"
                           onClick={() => toggleExpanded(doc.id)}
+                          style={{ boxShadow: 'none' }}
                         >
                           {expandedDoc === doc.id ? 'Mostrar menos' : 'Mostrar mais'}
                         </Button>
@@ -249,10 +245,11 @@ export function KnowledgeList({ documents, onDelete }) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className="h-6 w-6 text-zinc-400 hover:text-red-400 hover:bg-zinc-700/50"
+                      className="h-8 w-8 text-zinc-400 hover:text-red-400 hover:bg-red-900/20 transition-colors flex-shrink-0"
                       onClick={() => openSingleDeleteModal(doc.id)}
+                      style={{ boxShadow: 'none' }}
                     >
-                      <Trash2 className="h-3 w-3" />
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </div>

@@ -10,17 +10,12 @@ export function ConfirmationModal({
   message, 
   confirmText = "Confirmar", 
   cancelText = "Cancelar",
-  type = "danger" // "danger" ou "warning"
+  type = "danger"
 }) {
-  const [isVisible, setIsVisible] = useState(false);
-
   useEffect(() => {
     if (isOpen) {
-      setIsVisible(true);
-      // Previne scroll do body quando modal está aberto
       document.body.style.overflow = 'hidden';
     } else {
-      // Restaura scroll do body
       document.body.style.overflow = 'unset';
     }
 
@@ -29,58 +24,41 @@ export function ConfirmationModal({
     };
   }, [isOpen]);
 
-  const handleClose = () => {
-    setIsVisible(false);
-    setTimeout(onClose, 150); // Aguarda animação
-  };
-
-  const handleConfirm = () => {
-    onConfirm();
-    handleClose();
-  };
-
   const handleBackdropClick = (e) => {
     if (e.target === e.currentTarget) {
-      handleClose();
+      onClose();
     }
   };
 
-  // Não renderiza se não estiver aberto
   if (!isOpen) return null;
 
   return (
     <div 
-      className={`fixed inset-0 z-50 flex items-center justify-center p-4 transition-all duration-150 ${
-        isVisible ? 'bg-black/50 backdrop-blur-sm' : 'bg-transparent'
-      }`}
+      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm"
       onClick={handleBackdropClick}
+      style={{ boxShadow: 'none' }}
     >
       <div 
-        className={`bg-zinc-900 border border-zinc-700 rounded-lg shadow-xl max-w-md w-full transition-all duration-150 ${
-          isVisible ? 'scale-100 opacity-100' : 'scale-95 opacity-0'
-        }`}
+        className="bg-zinc-900 border border-zinc-700 rounded-lg w-full max-w-md min-w-[350px]"
         onClick={(e) => e.stopPropagation()}
+        style={{ boxShadow: 'none' }}
       >
-        {/* Header */}
+       {/* Header */}
         <div className="flex items-center justify-between p-4 border-b border-zinc-700">
           <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-full ${
-              type === 'danger' ? 'bg-red-900/50' : 'bg-yellow-900/50'
-            }`}>
-              <AlertTriangle 
-                size={20} 
-                className={type === 'danger' ? 'text-red-400' : 'text-yellow-400'} 
-              />
+            <div className="p-2 bg-red-500/20 rounded-lg">
+              <AlertTriangle size={18} className="text-red-400" />
             </div>
-            <h3 className="text-lg font-semibold text-zinc-200">
+            <h3 className="text-lg font-semibold text-white">
               {title}
             </h3>
           </div>
           <Button
             variant="ghost"
-            size="icon"
-            className="h-8 w-8 text-zinc-400 hover:text-zinc-200"
-            onClick={handleClose}
+            size="sm"
+            className="h-8 w-8 p-0 text-zinc-400 hover:text-white"
+            onClick={onClose}
+            style={{ boxShadow: 'none' }}
           >
             <X size={16} />
           </Button>
@@ -88,27 +66,25 @@ export function ConfirmationModal({
 
         {/* Content */}
         <div className="p-4">
-          <p className="text-zinc-300 leading-relaxed">
+          <p className="text-zinc-300 text-sm leading-relaxed whitespace-pre-line break-words">
             {message}
           </p>
         </div>
 
         {/* Actions */}
-        <div className="flex justify-end gap-3 p-4 border-t border-zinc-700">
+        <div className="flex justify-end gap-2 p-4 border-t border-zinc-700">
           <Button
             variant="ghost"
-            onClick={handleClose}
-            className="text-zinc-400 hover:text-zinc-200"
+            onClick={onClose}
+            className="text-zinc-400 hover:text-white hover:bg-zinc-800"
+            style={{ boxShadow: 'none' }}
           >
             {cancelText}
           </Button>
           <Button
-            onClick={handleConfirm}
-            className={
-              type === 'danger' 
-                ? 'bg-red-600 hover:bg-red-700 text-white' 
-                : 'bg-yellow-600 hover:bg-yellow-700 text-white'
-            }
+            onClick={onConfirm}
+            className="bg-red-600 hover:bg-red-700 text-white"
+            style={{ boxShadow: 'none' }}
           >
             {confirmText}
           </Button>
