@@ -251,6 +251,16 @@ class AIService:
             conversation_history = []
         
         try:
+            # Primeiro verifica se é saudação ou pergunta sobre o MangoAI
+            fixed_response = self._detect_greetings_and_about(query)
+            if fixed_response:
+                return {
+                    "response": fixed_response,
+                    "sources": ["MangoAI - Sistema Interno"],
+                    "confidence": 1.0,
+                    "query_type": "saudacao_ou_sobre_ia"
+                }
+            
             # Busca básica usando o vector_db
             results = self.vector_db.query(query, n_results=8)
             
@@ -482,6 +492,128 @@ class AIService:
             return "história"
         else:
             return "geral"
+    
+    def _detect_greetings_and_about(self, query: str) -> Optional[str]:
+        """Detecta saudações e perguntas sobre o MangoAI e retorna resposta fixa."""
+        query_lower = query.lower().strip()
+        
+        # Saudações
+        greetings = [
+            "oi", "olá", "ola", "hello", "hi", "hey", "bom dia", "boa tarde", "boa noite",
+            "e aí", "eai", "opa", "salve", "como vai", "tudo bem", "beleza"
+        ]
+        
+        # Despedidas
+        farewells = [
+            "tchau", "adeus", "até logo", "até mais", "falou", "bye", "goodbye",
+            "até a próxima", "até breve", "obrigado", "obrigada", "valeu"
+        ]
+        
+        # Agradecimentos
+        thanks = [
+            "obrigado", "obrigada", "obrigadu", "valeu", "vlw", "thanks", "muito obrigado",
+            "brigadão", "brigada", "agradeço"
+        ]
+        
+        if any(greeting in query_lower for greeting in greetings):
+            return self._get_greeting_response()
+        
+        if any(farewell in query_lower for farewell in farewells):
+            return self._get_farewell_response()
+            
+        if any(thank in query_lower for thank in thanks):
+            return self._get_thanks_response()
+        
+        # Perguntas sobre o MangoAI
+        about_patterns = [
+            r"o que.*mango",
+            r"quem.*mango", 
+            r"que.*mango",
+            r"mango.*que",
+            r"mango.*serve",
+            r"mango.*para",
+            r"sobre.*mango",
+            r"você.*mango",
+            r"voce.*mango",
+            r"mango.*você",
+            r"mango.*voce",
+            r"quem.*você",
+            r"quem.*voce",
+            r"o que.*você",
+            r"o que.*voce",
+            r"para.*serve",
+            r"qual.*sua.*função",
+            r"qual.*funcao",
+            r"como.*funciona",
+            r"que.*ia.*essa",
+            r"que.*inteligencia",
+            r"quem.*criou",
+            r"quem.*desenvolveu"
+        ]
+        
+        for pattern in about_patterns:
+            if re.search(pattern, query_lower):
+                return self._get_about_response()
+        
+        return None
+    
+    def _get_greeting_response(self) -> str:
+        """Retorna uma saudação aleatória do MangoAI."""
+        greetings = [
+            "Olá! 👋 Sou o MangoAI, sua assistente virtual do IFPE Campus Igarassu! Como posso ajudar você hoje?",
+            "Oi! 😊 MangoAI aqui! Estou pronto para esclarecer suas dúvidas sobre o IFPE. Em que posso ser útil?",
+            "Seja bem-vindo(a)! 🎓 Sou o MangoAI e estou aqui para auxiliar com informações do instituto. Como posso ajudar?",
+            "Olá! 🍋 MangoAI na área! Pronto para responder suas perguntas sobre o IFPE Campus Igarassu. O que você gostaria de saber?",
+            "Oi! Tudo bem? 😄 Sou o MangoAI, sua IA assistente desenvolvida pelos estudantes do IFPE. Como posso te ajudar hoje?"
+        ]
+        return random.choice(greetings)
+    
+    def _get_farewell_response(self) -> str:
+        """Retorna uma despedida aleatória do MangoAI."""
+        farewells = [
+            "Até logo! 👋 Foi um prazer ajudar você. Sempre que precisar de informações sobre o IFPE, estarei aqui!",
+            "Tchau! 😊 Espero ter sido útil. Volte sempre que tiver dúvidas sobre o instituto!",
+            "Até mais! 🎓 Continue seus estudos e lembre-se: o MangoAI está sempre disponível para ajudar!",
+            "Até breve! 🍋 Foi ótimo conversar com você. Sucesso nos seus estudos no IFPE!",
+            "Falou! 😄 Qualquer dúvida sobre o IFPE Campus Igarassu, é só chamar o MangoAI!"
+        ]
+        return random.choice(farewells)
+    
+    def _get_thanks_response(self) -> str:
+        """Retorna uma resposta de agradecimento do MangoAI."""
+        thanks_responses = [
+            "Por nada! 😊 Fico feliz em ajudar! É para isso que estou aqui. Precisando de mais alguma coisa?",
+            "Imagina! 👍 Foi um prazer esclarecer suas dúvidas. O MangoAI está sempre à disposição!",
+            "De nada! 🎓 Ajudar a comunidade do IFPE é minha missão. Conte comigo sempre!",
+            "Que isso! 🍋 Adoro poder ser útil. Se surgir mais alguma dúvida, é só perguntar!",
+            "Disponha! 😄 Estou aqui para isso mesmo. Sucesso nos seus estudos!"
+        ]
+        return random.choice(thanks_responses)
+    
+    def _get_about_response(self) -> str:
+        """Retorna informação sobre o MangoAI."""
+        return """🥭 **Sobre o MangoAI**
+
+Olá! Eu sou o **MangoAI**, uma inteligência artificial especializada em informações do IFPE Campus Igarassu! 
+
+**Quem sou eu?**
+- Uma IA assistente desenvolvida por estudantes do 4º período de **Tecnologia em Sistemas para Internet (TSI)** do IFPE Campus Igarassu
+- Minha missão é ajudar estudantes, servidores e visitantes com informações sobre o instituto
+
+**O que posso fazer por você?**
+✅ Responder dúvidas sobre cursos e disciplinas
+✅ Informar sobre procedimentos acadêmicos  
+✅ Explicar regulamentos e normas
+✅ Fornecer informações de contato
+✅ Esclarecer sobre estrutura e funcionamento do campus
+✅ Auxiliar com datas e prazos importantes
+
+**Como funciono?**
+Utilizo tecnologia avançada de processamento de linguagem natural para analisar documentos oficiais do IFPE e fornecer respostas precisas e atualizadas.
+
+Desenvolvido com 💚 pelos estudantes de TSI do IFPE Igarassu!
+
+*Como posso ajudar você hoje?* 😊"""
     
     def _generate_comprehensive_response(self, query: str, consolidated_content: Dict) -> str:
         content = consolidated_content["consolidated_text"]
