@@ -261,6 +261,11 @@ class AIService:
                     "query_type": "saudacao_ou_sobre_ia"
                 }
             
+            # Verifica se é solicitação de matriz curricular
+            curriculum_response = self._detect_curriculum_request(query)
+            if curriculum_response:
+                return curriculum_response
+            
             # Busca básica usando o vector_db
             results = self.vector_db.query(query, n_results=8)
             
@@ -556,6 +561,160 @@ class AIService:
                 return self._get_about_response()
         
         return None
+        
+    def _detect_curriculum_request(self, query: str) -> Optional[Dict[str, Any]]:
+        """Detecta solicitações de matriz curricular e retorna PDF se disponível."""
+        query_lower = query.lower().strip()
+        
+        # Padrões que indicam solicitação de matriz curricular
+        curriculum_patterns = [
+            r"matriz.*curricular",
+            r"grade.*curricular", 
+            r"estrutura.*curricular",
+            r"currículo.*curso",
+            r"disciplinas.*curso",
+            r"matérias.*curso",
+            r"disciplinas.*\w+",
+            r"estrutura.*\w+",
+            r"grade.*\w+",
+            r"matriz.*\w+"
+        ]
+        
+        # Verifica se a query corresponde a um padrão de matriz curricular
+        is_curriculum_request = any(re.search(pattern, query_lower) for pattern in curriculum_patterns)
+        
+        if not is_curriculum_request:
+            return None
+        
+        # Tenta identificar o curso específico na query
+        course_identified = self._identify_course_from_query(query_lower)
+        
+        if course_identified:
+            # Busca a matriz curricular correspondente
+            curriculum_file = self._find_curriculum_file(course_identified)
+            
+            if curriculum_file:
+                response_text = f"📋 **Matriz Curricular - {curriculum_file['courseName']}**\n\n"
+                response_text += f"Encontrei a matriz curricular do curso **{curriculum_file['courseName']}** ({curriculum_file['courseType']}).\n\n"
+                response_text += f"📎 **[Download da Matriz Curricular]({curriculum_file['filePath']})**\n\n"
+                response_text += "Clique no link acima para baixar o arquivo PDF com a matriz curricular completa do curso.\n\n"
+                response_text += "*Se você está usando um celular, o arquivo será baixado automaticamente ou você pode visualizá-lo no navegador.*"
+                
+                return {
+                    "response": response_text,
+                    "sources": ["Sistema de Matrizes Curriculares"],
+                    "confidence": 0.95,
+                    "query_type": "matriz_curricular",
+                    "curriculum_file": curriculum_file
+                }
+        
+        # Se não identificou o curso específico, lista cursos disponíveis
+        available_curricula = self._get_available_curricula()
+        
+        if available_curricula:
+            response_text = "📋 **Matrizes Curriculares Disponíveis**\n\n"
+            response_text += "Temos matrizes curriculares disponíveis para os seguintes cursos:\n\n"
+            
+            for curriculum in available_curricula:
+                response_text += f"🎓 **{curriculum['courseName']}** ({curriculum['courseType']})\n"
+                response_text += f"📎 [Download PDF]({curriculum['filePath']})\n\n"
+            
+            response_text += "*Clique no link de download do curso desejado para obter a matriz curricular.*"
+            
+            return {
+                "response": response_text,
+                "sources": ["Sistema de Matrizes Curriculares"],
+                "confidence": 0.90,
+                "query_type": "lista_matrizes_curriculares"
+            }
+        else:
+            return {
+                "response": "📋 **Matrizes Curriculares**\n\nNo momento não temos matrizes curriculares disponíveis no sistema. Entre em contato com a coordenação do curso ou secretaria acadêmica para obter essas informações.\n\n📞 Para mais informações, você pode entrar em contato diretamente com o campus.",
+                "sources": ["Sistema de Matrizes Curriculares"],
+                "confidence": 0.80,
+                "query_type": "matriz_curricular_indisponivel"
+            }
+    
+    def _identify_course_from_query(self, query_lower: str) -> Optional[str]:
+        """Identifica o curso específico mencionado na query."""
+        # Mapeamento de termos comuns para nomes de cursos
+        course_mappings = {
+            'tsi': 'Tecnologia em Sistemas para Internet',
+            'sistemas para internet': 'Tecnologia em Sistemas para Internet',
+            'sistemas internet': 'Tecnologia em Sistemas para Internet',
+            'tecnologia sistemas internet': 'Tecnologia em Sistemas para Internet',
+            'informática para internet': 'Técnico em Informática para Internet',
+            'informatica internet': 'Técnico em Informática para Internet',
+            'ipi': 'Técnico em Informática para Internet',
+            'técnico informática': 'Técnico em Informática para Internet',
+            'logística': 'Técnico em Logística',
+            'logistica': 'Técnico em Logística',
+            'técnico logística': 'Técnico em Logística',
+            'química': 'Técnico em Química',
+            'quimica': 'Técnico em Química',
+            'técnico química': 'Técnico em Química',
+            'gestão qualidade': 'Tecnologia em Gestão da Qualidade',
+            'gestao qualidade': 'Tecnologia em Gestão da Qualidade',
+            'qualidade': 'Tecnologia em Gestão da Qualidade',
+            'administração': 'Bacharelado em Administração',
+            'administracao': 'Bacharelado em Administração',
+            'bacharelado administração': 'Bacharelado em Administração',
+            'almoxarife': 'Almoxarife',
+            'operador computador': 'Operador de Computador'
+        }
+        
+        for key, course_name in course_mappings.items():
+            if key in query_lower:
+                return course_name
+        
+        return None
+    
+    def _find_curriculum_file(self, course_name: str) -> Optional[Dict]:
+        """Busca o arquivo de matriz curricular para o curso especificado."""
+        try:
+            curricula_file = "../frontend/data/curricula.json"
+            
+            if not os.path.exists(curricula_file):
+                return None
+            
+            with open(curricula_file, 'r', encoding='utf-8') as f:
+                curricula = json.load(f)
+            
+            # Busca exata pelo nome do curso
+            for curriculum in curricula:
+                if curriculum['courseName'].lower() == course_name.lower():
+                    return curriculum
+            
+            # Busca parcial se não encontrou exata
+            for curriculum in curricula:
+                if course_name.lower() in curriculum['courseName'].lower():
+                    return curriculum
+            
+            return None
+            
+        except Exception as e:
+            print(f"Erro ao buscar matriz curricular: {str(e)}")
+            return None
+    
+    def _get_available_curricula(self) -> List[Dict]:
+        """Retorna lista de matrizes curriculares disponíveis."""
+        try:
+            curricula_file = "../frontend/data/curricula.json"
+            
+            if not os.path.exists(curricula_file):
+                return []
+            
+            with open(curricula_file, 'r', encoding='utf-8') as f:
+                curricula = json.load(f)
+            
+            # Ordena por nome do curso
+            curricula.sort(key=lambda x: x['courseName'])
+            
+            return curricula
+            
+        except Exception as e:
+            print(f"Erro ao listar matrizes curriculares: {str(e)}")
+            return []
     
     def _get_greeting_response(self) -> str:
         """Retorna uma saudação aleatória do MangoAI."""
@@ -671,69 +830,69 @@ Desenvolvido com 💚 pelos estudantes de TSI do IFPE Igarassu!
                 info.setdefault('cursos', []).append(line)
         
         # Parágrafos informativos
-        clean_content = '\\n'.join(clean_lines)
-        paragraphs = [p.strip() for p in clean_content.split('\\n\\n') if len(p.strip()) > 50]
+        clean_content = '\n'.join(clean_lines)
+        paragraphs = [p.strip() for p in clean_content.split('\n\n') if len(p.strip()) > 50]
         info['paragraphs'] = paragraphs[:3]
         
         return info
     
     def _format_courses_response(self, info: Dict) -> str:
-        response = "🎓 **Cursos Oferecidos no Campus Igarassu**\\n\\n"
+        response = "🎓 **Cursos Oferecidos no Campus Igarassu**\n\n"
         
-        response += "**📚 Cursos Técnicos Subsequentes:**\\n"
-        response += "• Técnico em Logística\\n"
-        response += "• Técnico em Informática para Internet (IPI)\\n"
-        response += "• Técnico em Química\\n\\n"
+        response += "**📚 Cursos Técnicos Subsequentes:**\n"
+        response += "• Técnico em Logística\n"
+        response += "• Técnico em Informática para Internet (IPI)\n"
+        response += "• Técnico em Química\n\n"
         
-        response += "**🎓 Cursos Superiores:**\\n"
-        response += "• Tecnologia em Gestão da Qualidade\\n"
-        response += "• Tecnologia em Sistemas para Internet (TSI)\\n"
-        response += "• Bacharelado em Administração\\n\\n"
+        response += "**🎓 Cursos Superiores:**\n"
+        response += "• Tecnologia em Gestão da Qualidade\n"
+        response += "• Tecnologia em Sistemas para Internet (TSI)\n"
+        response += "• Bacharelado em Administração\n\n"
         
-        response += "**📋 Qualificação Profissional:**\\n"
-        response += "• Almoxarife\\n"
-        response += "• Operador de Computador\\n\\n"
+        response += "**📋 Qualificação Profissional:**\n"
+        response += "• Almoxarife\n"
+        response += "• Operador de Computador\n\n"
         
-        response += "**🔧 Formação Inicial e Continuada (FIC):**\\n"
+        response += "**🔧 Formação Inicial e Continuada (FIC):**\n"
         response += "• Cursos pelo Programa Nacional de Acesso ao Ensino Técnico e Emprego (Pronatec)"
         
         return response
     
     def _format_location_response(self, info: Dict) -> str:
-        response = "📍 **Localização do Campus Igarassu**\\n\\n"
+        response = "📍 **Localização do Campus Igarassu**\n\n"
         
         if 'endereco' in info:
-            response += f"O campus está localizado na **{info['endereco']}**.\\n\\n"
+            response += f"O campus está localizado na **{info['endereco']}**.\n\n"
         
         if 'campus_info' in info:
-            response += "**Sobre o Campus:**\\n"
+            response += "**Sobre o Campus:**\n"
             for item in info['campus_info'][:2]:
-                response += f"• {item}\\n"
+                response += f"• {item}\n"
         
         return response.strip()
     
     def _format_contact_response(self, info: Dict) -> str:
-        response = "📞 **Como Entrar em Contato**\\n\\n"
+        response = "📞 **Como Entrar em Contato**\n\n"
         
         if 'telefone' in info:
-            response += f"**Telefone:** {info['telefone']}\\n\\n"
+            response += f"**Telefone:** {info['telefone']}\n\n"
         
         if 'endereco' in info:
-            response += f"**Endereço:** {info['endereco']}\\n\\n"
+            response += f"**Endereço:** {info['endereco']}\n\n"
         
-        response += "**Outras Formas de Contato:**\\n"
-        response += "• Visite o campus pessoalmente\\n"
+        response += "**Outras Formas de Contato:**\n"
+        response += "• Visite o campus pessoalmente\n"
         response += "• Acesse o portal oficial do IFPE"
         
         return response.strip()
     
     def _format_history_response(self, info: Dict) -> str:
-        response = "📚 **História do Campus Igarassu**\\n\\n"
+        response = "📚 **História do Campus Igarassu**\n\n"
         
         if 'paragraphs' in info:
             for paragraph in info['paragraphs'][:2]:
                 if len(paragraph) > 80:
-                    response += f"{paragraph}\\n\\n"
+                    response += f"{paragraph}\n\n"
         
         return response.strip()
     
@@ -742,11 +901,11 @@ Desenvolvido com 💚 pelos estudantes de TSI do IFPE Igarassu!
             response = ""
             for paragraph in info['paragraphs'][:2]:
                 if len(paragraph) > 50:
-                    response += f"{paragraph}\\n\\n"
+                    response += f"{paragraph}\n\n"
             return response.strip()
         
         # Fallback para conteúdo limpo
-        lines = full_content.split('\\n')
+        lines = full_content.split('\n')
         clean_lines = []
         
         for line in lines:
@@ -758,6 +917,6 @@ Desenvolvido com 💚 pelos estudantes de TSI do IFPE Igarassu!
                 clean_lines.append(line)
         
         if clean_lines:
-            return '\\n'.join(clean_lines[:3])
+            return '\n'.join(clean_lines[:3])
         
         return "Informações disponíveis sobre o Campus Igarassu do IFPE."

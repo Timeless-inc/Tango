@@ -12,7 +12,16 @@ class WebScraperService:
     def __init__(self):
         self.session = requests.Session()
         self.session.headers.update({
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+            'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'DNT': '1',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none'
         })
         self.html_converter = html2text.HTML2Text()
         self.html_converter.ignore_links = False
@@ -54,6 +63,11 @@ class WebScraperService:
         Extrai conteúdo de uma URL com análise inteligente e divisão otimizada em chunks.
         """
         print(f"Iniciando scraping inteligente de: {url}")
+        
+        # Verifica se é um site do IFPE e usa método especializado
+        if 'ifpe.edu.br' in url:
+            return self._scrape_ifpe_site_enhanced(url, chunk_size)
+        
         try:
             # Valida a URL
             if not validators.url(url):
@@ -61,8 +75,30 @@ class WebScraperService:
             
             # Faz a requisição com headers mais robustos
             print(f"Fazendo requisição para: {url}")
-            response = self.session.get(url, timeout=30, allow_redirects=True)
-            response.raise_for_status()
+            
+            # Adiciona delay para não parecer bot
+            time.sleep(1)
+            
+            try:
+                response = self.session.get(url, timeout=30, allow_redirects=True, verify=False)
+                response.raise_for_status()
+            except requests.exceptions.SSLError:
+                # Tenta novamente sem verificação SSL se der erro
+                print("Erro SSL, tentando sem verificação...")
+                response = self.session.get(url, timeout=30, allow_redirects=True, verify=False)
+                response.raise_for_status()
+            except requests.exceptions.Timeout:
+                raise Exception("Timeout na requisição - servidor não responde")
+            except requests.exceptions.ConnectionError:
+                raise Exception("Erro de conexão - site pode estar fora do ar")
+            except requests.exceptions.HTTPError as e:
+                if response.status_code == 403:
+                    raise Exception("Acesso negado - site bloqueia bots")
+                elif response.status_code == 404:
+                    raise Exception("Página não encontrada")
+                else:
+                    raise Exception(f"Erro HTTP {response.status_code}")
+            
             response.encoding = response.apparent_encoding  # Detecta encoding correto
             print(f"Resposta recebida. Status: {response.status_code}")
             
@@ -123,6 +159,340 @@ class WebScraperService:
                 "success": False,
                 "error": str(e)
             }
+    
+    def _scrape_ifpe_site_enhanced(self, url: str, chunk_size: int = 800) -> Dict:
+        """Método especializado para sites do IFPE com múltiplas estratégias."""
+        print(f"🎯 Usando método especializado para site IFPE: {url}")
+        
+        # Headers específicos para sites educacionais brasileiros
+        ifpe_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8',
+            'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Cache-Control': 'no-cache',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+            'Sec-Fetch-Dest': 'document',
+            'Sec-Fetch-Mode': 'navigate',
+            'Sec-Fetch-Site': 'none',
+            'Referer': 'https://www.google.com/',
+            'DNT': '1'
+        }
+        
+        # Múltiplas tentativas com diferentes estratégias
+        strategies = [
+            {'delay': 2, 'timeout': 30, 'verify_ssl': True},
+            {'delay': 5, 'timeout': 45, 'verify_ssl': True},
+            {'delay': 3, 'timeout': 60, 'verify_ssl': False}
+        ]
+        
+        for i, strategy in enumerate(strategies):
+            try:
+                print(f"Tentativa {i+1}/3 com delay de {strategy['delay']}s...")
+                
+                # Delay maior para sites institucionais
+                time.sleep(strategy['delay'])
+                
+                # Cria nova sessão com headers específicos
+                session = requests.Session()
+                session.headers.update(ifpe_headers)
+                
+                response = session.get(
+                    url, 
+                    timeout=strategy['timeout'], 
+                    allow_redirects=True,
+                    verify=strategy['verify_ssl']
+                )
+                
+                print(f"Status HTTP: {response.status_code}")
+                
+                if response.status_code == 200:
+                    response.encoding = response.apparent_encoding
+                    soup = BeautifulSoup(response.content, 'html.parser')
+                    
+                    # Extrai metadados
+                    metadata = self._extract_ifpe_metadata(soup, url)
+                    print(f"Título extraído (IFPE): {metadata['title']}")
+                    
+                    # Extrai conteúdo específico do IFPE
+                    content = self._extract_ifpe_content(soup)
+                    
+                    if content.strip() and len(content) > 100:
+                        # Limpa o texto
+                        clean_text = self._advanced_text_cleaning(content)
+                        print(f"Texto IFPE extraído. Tamanho: {len(clean_text)} caracteres")
+                        
+                        # Cria chunks
+                        chunks = self._create_intelligent_chunks(
+                            clean_text, metadata, url, chunk_size
+                        )
+                        
+                        print(f"✅ Site IFPE processado com sucesso! {len(chunks)} chunks criados")
+                        
+                        return {
+                            "url": url,
+                            "title": metadata['title'],
+                            "description": metadata['description'],
+                            "chunks": chunks,
+                            "total_chunks": len(chunks),
+                            "success": True,
+                            "error": None,
+                            "metadata": metadata
+                        }
+                    else:
+                        print("⚠️ Conteúdo IFPE extraído vazio ou insuficiente")
+                        
+                elif response.status_code == 403:
+                    print(f"⚠️ Acesso negado (403) - tentativa {i+1}")
+                    continue
+                else:
+                    print(f"⚠️ Status HTTP {response.status_code} - tentativa {i+1}")
+                    continue
+                    
+            except Exception as e:
+                print(f"⚠️ Tentativa {i+1} falhou: {str(e)}")
+                continue
+        
+        print("❌ Todas as tentativas falharam para o site IFPE")
+        return {
+            "url": url,
+            "title": None,
+            "description": None,
+            "chunks": [],
+            "total_chunks": 0,
+            "success": False,
+            "error": "Todas as tentativas de acesso ao site IFPE falharam"
+        }
+    
+    def _extract_ifpe_metadata(self, soup: BeautifulSoup, url: str) -> Dict:
+        """Extrai metadados específicos de páginas do IFPE."""
+        title = None
+        description = None
+        
+        # Tenta extrair título
+        title_selectors = ['title', 'h1', '.page-title', '.content-title']
+        for selector in title_selectors:
+            element = soup.select_one(selector)
+            if element:
+                title = element.get_text().strip()
+                if title:
+                    break
+        
+        if not title:
+            title = "Página IFPE"
+        
+        # Tenta extrair descrição
+        desc_selectors = [
+            'meta[name="description"]', 
+            'meta[property="og:description"]',
+            '.description',
+            '.summary'
+        ]
+        for selector in desc_selectors:
+            element = soup.select_one(selector)
+            if element:
+                if element.name == 'meta':
+                    description = element.get('content', '').strip()
+                else:
+                    description = element.get_text().strip()
+                if description:
+                    break
+        
+        if not description:
+            description = "Conteúdo do site IFPE"
+        
+        # Extrai campus da URL
+        campus = self._extract_campus_from_url(url)
+        
+        return {
+            'title': title,
+            'description': description,
+            'campus': campus,
+            'institution': 'IFPE',
+            'type': 'educational_content'
+        }
+    
+    def _extract_ifpe_content(self, soup: BeautifulSoup) -> str:
+        """Extrai conteúdo específico de páginas do IFPE."""
+        # Remove elementos indesejados
+        for tag in soup(['script', 'style', 'nav', 'header', 'footer', 'aside']):
+            tag.decompose()
+        
+        # Seletores específicos para sites do IFPE
+        ifpe_selectors = [
+            '.conteudo',
+            '.content',
+            '.main-content',
+            '#content',
+            '.documentContent',
+            '.newsImageContainer + *',
+            'article',
+            '.portalMessage',
+            '.documentDescription',
+            '.text-content',
+            '.page-content'
+        ]
+        
+        content = ""
+        
+        # Tenta seletores específicos do IFPE
+        for selector in ifpe_selectors:
+            elements = soup.select(selector)
+            if elements:
+                content = " ".join([elem.get_text().strip() for elem in elements])
+                if len(content) > 200:  # Conteúdo substancial
+                    break
+        
+        # Fallback: procura por divs com texto sobre educação
+        if not content.strip() or len(content) < 200:
+            educational_keywords = ['pet', 'programa', 'educação', 'tutorial', 'ifpe', 'instituto', 'campus']
+            
+            for div in soup.find_all(['div', 'section', 'article']):
+                div_text = div.get_text().strip()
+                if len(div_text) > 100:
+                    text_lower = div_text.lower()
+                    keyword_count = sum(1 for keyword in educational_keywords if keyword in text_lower)
+                    
+                    if keyword_count >= 2:
+                        if len(div_text) > len(content):
+                            content = div_text
+        
+        # Fallback específico para PET: busca informações estruturadas
+        if 'pet' in content.lower() or len(content) < 500:
+            pet_content = self._extract_pet_structured_content(soup)
+            if pet_content and len(pet_content) > len(content):
+                content = pet_content
+        
+        # Último fallback: todo o texto da página
+        if not content.strip():
+            content = soup.get_text()
+        
+        return content
+    
+    def _extract_pet_structured_content(self, soup: BeautifulSoup) -> str:
+        """Extrai conteúdo estruturado específico para páginas do PET."""
+        structured_content = []
+        
+        # Procura por títulos e suas seções
+        headings = soup.find_all(['h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
+        
+        for heading in headings:
+            heading_text = heading.get_text().strip()
+            if not heading_text:
+                continue
+                
+            # Adiciona o título
+            structured_content.append(f"\n{heading_text}\n")
+            
+            # Procura pelo conteúdo que segue este título
+            current_element = heading.find_next_sibling()
+            section_content = []
+            
+            while current_element and current_element.name not in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                if current_element.name == 'p':
+                    text = current_element.get_text().strip()
+                    if text and len(text) > 20:
+                        section_content.append(text)
+                elif current_element.name in ['ul', 'ol']:
+                    # Processa listas - método melhorado
+                    list_items = current_element.find_all('li')
+                    if list_items:
+                        # Adiciona cabeçalho da lista se existir
+                        prev_element = current_element.find_previous_sibling()
+                        if prev_element and prev_element.name in ['p', 'strong', 'b']:
+                            prev_text = prev_element.get_text().strip()
+                            if any(keyword in prev_text.lower() for keyword in ['discentes', 'integrantes', 'membros', 'compõem']):
+                                section_content.append(prev_text)
+                        
+                        # Adiciona cada item da lista
+                        for li in list_items:
+                            li_text = li.get_text().strip()
+                            if li_text and len(li_text) > 5:
+                                # Mantém formatação original se não começar com bullet
+                                if not li_text.startswith('•'):
+                                    section_content.append(f"• {li_text}")
+                                else:
+                                    section_content.append(li_text)
+                elif current_element.name == 'div':
+                    text = current_element.get_text().strip()
+                    if text and len(text) > 20:
+                        # Verifica se não é navegação
+                        if not self._is_navigation_text(text):
+                            # Se contém lista de nomes, processa especialmente
+                            if self._contains_names_list(text):
+                                formatted_names = self._format_names_list(text)
+                                section_content.extend(formatted_names)
+                            else:
+                                section_content.append(text)
+                
+                current_element = current_element.find_next_sibling()
+            
+            # Adiciona o conteúdo da seção se houver
+            if section_content:
+                structured_content.extend(section_content)
+                structured_content.append("")  # Linha em branco para separar seções
+        
+        # Se não encontrou estrutura de títulos, tenta método alternativo
+        if not structured_content:
+            # Procura por parágrafos e listas diretamente
+            paragraphs = soup.find_all('p')
+            lists = soup.find_all(['ul', 'ol'])
+            
+            for p in paragraphs:
+                text = p.get_text().strip()
+                if text and len(text) > 20 and not self._is_navigation_text(text):
+                    structured_content.append(text)
+            
+            for ul in lists:
+                list_items = ul.find_all('li')
+                if list_items:
+                    # Procura por texto anterior que possa ser cabeçalho
+                    prev_text = ""
+                    prev_element = ul.find_previous_sibling(['p', 'div', 'strong'])
+                    if prev_element:
+                        prev_text = prev_element.get_text().strip()
+                        if any(keyword in prev_text.lower() for keyword in ['discentes', 'integrantes', 'membros', 'compõem']):
+                            structured_content.append(prev_text)
+                    
+                    for li in list_items:
+                        li_text = li.get_text().strip()
+                        if li_text and len(li_text) > 5:
+                            structured_content.append(f"• {li_text}")
+        
+        return "\n".join(structured_content)
+    
+    def _contains_names_list(self, text: str) -> bool:
+        """Verifica se o texto contém uma lista de nomes próprios."""
+        # Procura por padrões de nomes (Nome Sobrenome Sobrenome)
+        name_pattern = r'[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][a-záàâãéêíóôõúç]+\s+[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][a-záàâãéêíóôõúç]+(?:\s+[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][a-záàâãéêíóôõúç]+)*'
+        names_found = re.findall(name_pattern, text)
+        
+        # Se encontrou 3 ou mais nomes, provavelmente é uma lista de nomes
+        return len(names_found) >= 3
+    
+    def _format_names_list(self, text: str) -> List[str]:
+        """Formata uma lista de nomes encontrada no texto."""
+        # Procura por padrões de nomes
+        name_pattern = r'[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][a-záàâãéêíóôõúç]+(?:\s+[a-záàâãéêíóôõúç]+)*(?:\s+[A-ZÁÀÂÃÉÊÍÓÔÕÚÇ][a-záàâãéêíóôõúç]+)+'
+        names_found = re.findall(name_pattern, text)
+        
+        formatted_names = []
+        for name in names_found:
+            name = name.strip()
+            if len(name) > 10:  # Nomes completos são geralmente longos
+                formatted_names.append(f"• {name}")
+        
+        return formatted_names
+    
+    def _extract_campus_from_url(self, url: str) -> str:
+        """Extrai o nome do campus da URL do IFPE."""
+        # Padrão: portal.ifpe.edu.br/CAMPUS/...
+        parts = url.split('/')
+        for i, part in enumerate(parts):
+            if 'ifpe.edu.br' in part and i + 1 < len(parts):
+                return parts[i + 1]
+        return 'desconhecido'
     
     def _extract_metadata(self, soup: BeautifulSoup, url: str) -> Dict:
         """Extrai metadados importantes da página."""
@@ -556,6 +926,11 @@ class WebScraperService:
         title_lower = title.lower()
         
         type_keywords = {
+            'pet_programa': ['pet', 'programa de educação tutorial', 'programa educação tutorial'],
+            'pet_integrantes': ['integrantes', 'membros', 'discentes', 'participantes', 'bolsistas', 'equipe'],
+            'pet_tutores': ['tutor', 'tutora', 'professor', 'coordenador', 'orientador'],
+            'pet_objetivos': ['objetivos', 'metas', 'finalidade', 'propósito'],
+            'pet_atividades': ['atividades', 'projetos', 'ações', 'trabalhos'],
             'história': ['história', 'origem', 'fundação', 'criação', 'início'],
             'localização': ['localização', 'endereço', 'onde', 'local', 'situado', 'fica'],
             'contato': ['contato', 'telefone', 'email', 'falar', 'comunicação'],
@@ -578,16 +953,20 @@ class WebScraperService:
         for section in structure['sections']:
             section_text = f"{section['title']}\n\n{section['content']}"
             
+            # Para conteúdo do PET, aumenta tolerância para manter contexto
+            tolerance_multiplier = 2.0 if 'pet' in section_text.lower() else 1.5
+            
             # Se a seção é pequena o suficiente, vira um chunk
-            if len(section_text) <= chunk_size * 1.2:  # 20% de tolerância
+            if len(section_text) <= chunk_size * tolerance_multiplier:
                 chunk_data = self._create_enhanced_chunk_data(
                     section_text, metadata, url, len(chunks), section['type'], section['title']
                 )
                 chunks.append(chunk_data)
             else:
-                # Divide a seção em sub-chunks
+                # Divide a seção em sub-chunks maiores para PET
+                adjusted_chunk_size = int(chunk_size * 1.5) if 'pet' in section_text.lower() else chunk_size
                 sub_chunks = self._split_large_section(
-                    section, metadata, url, chunk_size, len(chunks)
+                    section, metadata, url, adjusted_chunk_size, len(chunks)
                 )
                 chunks.extend(sub_chunks)
         
@@ -846,9 +1225,9 @@ class WebScraperService:
         processed_chunks = []
         
         for chunk in chunks:
-            # Remove chunks muito pequenos ou de baixa qualidade
-            if (len(chunk['text']) < 100 or 
-                chunk['metadata']['quality_score'] < 0.3):
+            # Remove chunks muito pequenos ou de baixa qualidade (threshold reduzido)
+            if (len(chunk['text']) < 50 or 
+                chunk['metadata']['quality_score'] < 0.1):
                 continue
             
             # Melhora o texto do chunk
