@@ -1,19 +1,21 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardContent, CardTitle, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { LogOut, Plus, Database, Activity, Shield, BarChart3 } from 'lucide-react';
+import { LogOut, Plus, Database, Activity, Shield, BarChart3, BookOpen } from 'lucide-react';
 import { KnowledgeList } from '../components/knowledge-list';
 import { WebsiteScraper } from '../components/website-scraper';
 import { PDFUploader } from '../components/pdf-uploader';
+import { CurriculumUploader } from '../components/curriculum-uploader';
+import { CurriculaList } from '../components/curricula-list';
 import { deleteCookie, getCookie } from 'cookies-next';
 import { motion } from 'framer-motion';
 
-export default function AdminPage() {
+const AdminPage = () => {
   const [documents, setDocuments] = useState([]);
   const [newDocument, setNewDocument] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -23,7 +25,8 @@ export default function AdminPage() {
     total: 0,
     manual: 0,
     pdf: 0,
-    website: 0
+    website: 0,
+    curricula: 0
   });
   const router = useRouter();
 
@@ -58,16 +61,37 @@ export default function AdminPage() {
         doc.content?.includes('URL:')
       ).length;
 
-      setStats({
+      setStats(prev => ({
+        ...prev,
         total: documents.length,
         manual,
         pdf,
         website
-      });
+      }));
     };
 
     calculateStats();
   }, [documents]);
+
+  // Carregar estatísticas de matrizes curriculares
+  useEffect(() => {
+    const fetchCurriculaStats = async () => {
+      try {
+        const response = await fetch('/api/upload-curriculum');
+        const data = await response.json();
+        const curriculaCount = data.curricula?.length || 0;
+        
+        setStats(prev => ({
+          ...prev,
+          curricula: curriculaCount
+        }));
+      } catch (error) {
+        console.error('Erro ao carregar estatísticas das matrizes:', error);
+      }
+    };
+
+    fetchCurriculaStats();
+  }, []);
 
   // Buscar documentos existentes
   const fetchDocuments = async () => {
@@ -82,11 +106,18 @@ export default function AdminPage() {
     }
   };
 
+  // Carregamento inicial
   useEffect(() => {
     if (!isAuthChecking) {
       fetchDocuments();
     }
   }, [isAuthChecking]);
+
+  // Fazer logout
+  const handleLogout = () => {
+    deleteCookie('admin_token');
+    router.replace('/admin/login');
+  };
 
   // Adicionar novo documento
   const handleAddDocument = async (e) => {
@@ -152,51 +183,68 @@ export default function AdminPage() {
   const handlePDFUploadComplete = (data) => {
     fetchDocuments();
     setMessage({ 
-      text: `PDF processado! ${data.documents_added} documentos adicionados de ${data.total_pages} páginas.`, 
+      text: 'PDF processado com sucesso!', 
       type: 'success' 
     });
   };
 
-  const handleLogout = () => {
-    deleteCookie('admin_token');
-    router.push('/admin/login');
+  const handleCurriculumUploadComplete = (data) => {
+    setMessage({ 
+      text: 'Matriz curricular enviada com sucesso!', 
+      type: 'success' 
+    });
+    // Atualizar estatísticas das matrizes curriculares
+    setStats(prev => ({
+      ...prev,
+      curricula: prev.curricula + 1
+    }));
   };
 
-  // Loading state
+  const handleCurriculumDelete = () => {
+    // Atualizar estatísticas das matrizes curriculares
+    setStats(prev => ({
+      ...prev,
+      curricula: Math.max(0, prev.curricula - 1)
+    }));
+  };
+
+  // Limpar mensagem após alguns segundos
+  useEffect(() => {
+    if (message.text) {
+      const timer = setTimeout(() => {
+        setMessage({ text: '', type: '' });
+      }, 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [message]);
+
   if (isAuthChecking) {
     return (
-      <div className="min-h-screen flex items-center justify-center">
-        <motion.div 
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="text-center"
-        >
-          <div className="relative">
-            <div className="animate-spin rounded-full h-16 w-16 border-t-2 border-b-2 border-orange-500 mx-auto"></div>
-            <Shield className="absolute inset-4 text-orange-500" />
-          </div>
-          <p className="mt-6 text-zinc-400 text-lg">Verificando autenticação...</p>
-        </motion.div>
+      <div className="min-h-screen bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900 flex items-center justify-center">
+        <div className="flex items-center gap-3 text-white">
+          <div className="w-6 h-6 border-2 border-orange-500/30 border-t-orange-500 rounded-full animate-spin"></div>
+          <span>Verificando autenticação...</span>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen">
-      {/* Header moderno */}
-      <div className="border-b border-zinc-800/50 backdrop-blur-sm bg-zinc-900/20 sticky top-0 z-40">
+    <div className="min-h-screen bg-gradient-to-br from-zinc-900 via-zinc-800 to-zinc-900">
+      {/* Header */}
+      <div className="bg-zinc-900/80 backdrop-blur-sm border-b border-zinc-700/50 sticky top-0 z-50">
         <div className="max-w-7xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
-            <motion.div 
+            <motion.div
               initial={{ opacity: 0, x: -20 }}
               animate={{ opacity: 1, x: 0 }}
-              className="flex items-center gap-4"
+              className="flex items-center gap-3"
             >
               <div className="p-2 bg-gradient-to-r from-orange-500 to-orange-600 rounded-lg">
                 <Shield className="w-6 h-6 text-white" />
               </div>
               <div>
-                <h1 className="text-2xl font-bold text-white">Painel Administrativo</h1>
+                <h1 className="text-xl font-bold text-white">Painel Administrativo</h1>
                 <p className="text-zinc-400 text-sm">Mango AI - Sistema de Gerenciamento</p>
               </div>
             </motion.div>
@@ -229,7 +277,7 @@ export default function AdminPage() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.1 }}
-          className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8"
+          className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8"
         >
           <Card className="bg-zinc-900/50 backdrop-blur-sm border-zinc-700/50 hover:border-orange-500/30 transition-all duration-300">
             <CardContent className="p-6">
@@ -286,6 +334,20 @@ export default function AdminPage() {
               </div>
             </CardContent>
           </Card>
+
+          <Card className="bg-zinc-900/50 backdrop-blur-sm border-zinc-700/50 hover:border-orange-500/30 transition-all duration-300">
+            <CardContent className="p-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-zinc-400 text-sm font-medium">Matrizes Curriculares</p>
+                  <p className="text-2xl font-bold text-white">{stats.curricula}</p>
+                </div>
+                <div className="p-3 bg-orange-500/20 rounded-full">
+                  <BookOpen className="w-6 h-6 text-orange-400" />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
         </motion.div>
 
         {/* Mensagem de feedback */}
@@ -308,7 +370,7 @@ export default function AdminPage() {
           </motion.div>
         )}
         
-        <div className="grid gap-6 lg:grid-cols-3">
+        <div className="grid gap-6 lg:grid-cols-4">
           {/* Formulário para adicionar documento */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -372,13 +434,22 @@ export default function AdminPage() {
           >
             <WebsiteScraper onScrapingComplete={handleScrapingComplete} />
           </motion.div>
+
+          {/* Componente de Upload de Matriz Curricular */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.5 }}
+          >
+            <CurriculumUploader onUploadComplete={handleCurriculumUploadComplete} />
+          </motion.div>
           
           {/* Lista de documentos - ocupa toda a largura */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.5 }}
-            className="lg:col-span-3"
+            transition={{ delay: 0.6 }}
+            className="lg:col-span-4"
           >
             <Card className="bg-zinc-900/50 backdrop-blur-sm border-zinc-700/50">
               <CardHeader className="border-b border-zinc-700/50">
@@ -412,6 +483,10 @@ export default function AdminPage() {
                       <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
                       {stats.website} websites
                     </span>
+                    <span className="flex items-center gap-1">
+                      <div className="w-2 h-2 bg-orange-400 rounded-full"></div>
+                      {stats.curricula} matrizes
+                    </span>
                   </div>
                   <Badge variant="secondary" className="bg-zinc-700/50 text-zinc-300">
                     Atualizado agora
@@ -420,8 +495,20 @@ export default function AdminPage() {
               </CardFooter>
             </Card>
           </motion.div>
+
+          {/* Lista de Matrizes Curriculares - ocupa toda a largura */}
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.7 }}
+            className="lg:col-span-4"
+          >
+            <CurriculaList onDelete={handleCurriculumDelete} />
+          </motion.div>
         </div>
       </div>
     </div>
   );
-}
+};
+
+export default AdminPage;

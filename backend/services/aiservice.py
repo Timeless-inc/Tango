@@ -2,318 +2,921 @@ from services.vectordb import VectorDBService
 from sentence_transformers import SentenceTransformer
 import random
 import re
+import json
+import os
+from collections import Counter, defaultdict
+from datetime import datetime
+from typing import List, Dict, Any, Optional, Tuple, Set
+import numpy as np
+from dataclasses import dataclass, field
+
+@dataclass
+class KnowledgeMetrics:
+    document_count: int = 0
+    topic_coverage: Dict[str, int] = field(default_factory=dict)
+    quality_scores: List[float] = field(default_factory=list)
+    knowledge_gaps: List[str] = field(default_factory=list)
+    last_updated: str = field(default_factory=lambda: datetime.now().isoformat())
+
+@dataclass
+class QueryContext:
+    intent: str = "general"
+    complexity: float = 0.5
+    domain: str = "educational"
+    required_precision: float = 0.8
+    temporal_relevance: bool = False
 
 class AIService:
     def __init__(self):
         self.vector_db = VectorDBService()
+        self.sentence_transformer = None
         
+        # Configurações avançadas e adaptativas
+        self.response_config = {
+            'max_sources': 5,
+            'similarity_threshold': 0.65,
+            'max_response_length': 500,
+            'prioritize_recent': True,
+            'focus_keywords': True,
+            'structured_response': True,
+            'adaptive_threshold': True,
+            'multi_strategy_search': True,
+            'semantic_expansion': True,
+            'quality_filtering': True,
+            'context_awareness': True,
+        }
+        
+        # Sistema de aprendizado e adaptação
+        self.knowledge_metrics = KnowledgeMetrics()
+        self.domain_expertise = {
+            'educational': 0.9,
+            'technical': 0.7,
+            'administrative': 0.8,
+            'general': 0.6
+        }
+        
+        # Cache inteligente para otimização
+        self.query_cache = {}
+        self.pattern_cache = {}
+        
+        # Taxonomia de conhecimento para melhor categorização
+        self.knowledge_taxonomy = {
+            'institutional': ['campus', 'ifpe', 'instituto', 'história', 'missão'],
+            'academic': ['curso', 'técnico', 'superior', 'graduação', 'ensino'],
+            'procedural': ['como', 'processo', 'etapas', 'procedimento', 'inscrição'],
+            'contact': ['telefone', 'email', 'contato', 'endereço', 'localização'],
+            'temporal': ['quando', 'horário', 'data', 'prazo', 'período'],
+            'qualitative': ['qualidade', 'avaliação', 'critério', 'requisito']
+        }
+        
+        # Inicializa análise da base de conhecimento existente
+        self._analyze_existing_knowledge()
+    
+    def _analyze_existing_knowledge(self):
+        """Analisa a base de conhecimento existente para otimização"""
+        try:
+            if hasattr(self.vector_db, 'get_collection_info'):
+                info = self.vector_db.get_collection_info()
+                if info:
+                    self.knowledge_metrics.document_count = info.get('count', 0)
+                    print(f"Base de conhecimento existente: {self.knowledge_metrics.document_count} documentos")
+            
+            self._load_knowledge_metrics()
+            
+        except Exception as e:
+            print(f"Aviso: Não foi possível analisar conhecimento existente: {str(e)}")
+    
+    def _load_knowledge_metrics(self):
+        try:
+            metrics_file = "data/knowledge_metrics.json"
+            if os.path.exists(metrics_file):
+                with open(metrics_file, 'r', encoding='utf-8') as f:
+                    data = json.load(f)
+                    self.knowledge_metrics.topic_coverage = data.get('topic_coverage', {})
+                    self.knowledge_metrics.quality_scores = data.get('quality_scores', [])
+                    self.knowledge_metrics.knowledge_gaps = data.get('knowledge_gaps', [])
+        except Exception as e:
+            print(f"Aviso: Não foi possível carregar métricas: {str(e)}")
+    
+    def _save_knowledge_metrics(self):
+        try:
+            os.makedirs("data", exist_ok=True)
+            metrics_file = "data/knowledge_metrics.json"
+            data = {
+                'document_count': self.knowledge_metrics.document_count,
+                'topic_coverage': self.knowledge_metrics.topic_coverage,
+                'quality_scores': self.knowledge_metrics.quality_scores,
+                'knowledge_gaps': self.knowledge_metrics.knowledge_gaps,
+                'last_updated': self.knowledge_metrics.last_updated
+            }
+            with open(metrics_file, 'w', encoding='utf-8') as f:
+                json.dump(data, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"Aviso: Não foi possível salvar métricas: {str(e)}")
+    
     def seed_knowledge_base(self, documents):
         """
-        Adiciona documentos à base de conhecimento.
+        Adiciona documentos à base de conhecimento com análise avançada e adaptação.
         """
-        print(f"Adicionando {len(documents)} documentos à base de conhecimento")
+        print(f"🧠 Processando {len(documents)} novos documentos para a base de conhecimento...")
         
         if not documents:
-            print("Nenhum documento fornecido")
+            print("⚠️  Nenhum documento fornecido")
             return {"ids": []}
         
         try:
-            result = self.vector_db.add_documents(documents)
-            print(f"Documentos adicionados com sucesso. IDs: {result.get('ids', [])}")
-            return result
-        except Exception as e:
-            print(f"Erro ao adicionar documentos: {str(e)}")
-            raise e
-
-    # ... resto da classe mantém igual ...
-    def answer_query(self, query, conversation_history=None):
-        """
-        Responde à consulta do usuário, considerando o histórico de conversas
-        e buscando informações relevantes na base de conhecimento.
-        """
-        if conversation_history is None:
-            conversation_history = []
+            # Análise avançada dos novos documentos
+            analyzed_docs = self._analyze_new_documents(documents)
             
-        # Busca informações relevantes na base de conhecimento
-        results = self.vector_db.query(query, n_results=5)
-        
-        if results and 'documents' in results and results['documents'] and 'distances' in results:
-            # Analisa os resultados por relevância e conteúdo
-            filtered_docs = []
+            # Processamento inteligente baseado no tipo de conteúdo
+            processed_docs = self._intelligent_document_processing(analyzed_docs)
             
-            # Primeiro, vamos extrair palavras-chave da consulta
-            query_words = set(query.lower().split())
-            important_words = {'o', 'a', 'os', 'as', 'e', 'é', 'são', 'tem', 'que'}
-            query_keywords = query_words - important_words
+            # Detecção de lacunas de conhecimento
+            knowledge_gaps = self._detect_knowledge_gaps(processed_docs)
             
-            # Define threshold para considerar documentos relevantes
-            high_threshold = 0.7
+            # Adição dos documentos com metadados enriquecidos
+            result = self.vector_db.add_documents(processed_docs)
             
-            # Filtra documentos relevantes baseados em palavras-chave e similaridade
-            if any(keyword in query.lower() for keyword in ['mango', 'assistente', 'virtual']):
-                for i, doc in enumerate(results['documents']):
-                    if 'mango' in doc.lower() or 'assistente virtual' in doc.lower():
-                        if results['distances'][i] > 0.5:
-                            filtered_docs.append(doc)
-                            
-            elif any(keyword in query.lower() for keyword in ['campus', 'recife', 'ifpe', 'curso']):
-                for i, doc in enumerate(results['documents']):
-                    if 'campus recife' in doc.lower() or 'ifpe' in doc.lower() or 'curso' in doc.lower():
-                        if 'mango' not in doc.lower():
-                            filtered_docs.append(doc)
+            # Atualização das métricas de conhecimento
+            self._update_knowledge_metrics(processed_docs, knowledge_gaps)
             
-            # Se não encontramos documentos específicos, usamos o threshold
-            if not filtered_docs:
-                for i, doc in enumerate(results['documents']):
-                    if results['distances'][i] > high_threshold:
-                        filtered_docs.append(doc)
+            # Otimização automática da configuração
+            self._optimize_config_for_new_knowledge(processed_docs)
             
-            # Se ainda não temos documentos relevantes, relaxa o threshold
-            if not filtered_docs:
-                threshold = 0.5
-                for i, doc in enumerate(results['documents']):
-                    if results['distances'][i] > threshold:
-                        filtered_docs.append(doc)
+            print(f"✅ {len(processed_docs)} documentos adicionados com sucesso!")
+            print(f"📊 Cobertura de tópicos atualizada: {len(self.knowledge_metrics.topic_coverage)} categorias")
+            print(f"🔍 {len(knowledge_gaps)} lacunas de conhecimento detectadas")
             
-            if filtered_docs:
-                # Prepara prompt para modelo de linguagem
-                prompt = f"""
-                Baseado nas seguintes informações:
-                {' '.join(filtered_docs)}
-                
-                Responda à pergunta: {query}
-                
-                Forneça uma resposta concisa e informativa, sem mencionar explicitamente que está consultando documentos.
-                Não invente informações que não estejam no contexto fornecido.
-                """
-                
-                # Usar modelo de linguagem para gerar resposta elaborada
-                try:
-                    # Aqui vamos simular a resposta refinada
-                    # Em um ambiente real, você chamaria um modelo como GPT ou similar
-                    elaborated_response = self._format_response(prompt, filtered_docs, query)
-                    
-                    response = {
-                        "response": elaborated_response,
-                        "sources": filtered_docs
-                    }
-                except Exception as e:
-                    print(f"Erro ao gerar resposta elaborada: {e}")
-                    # Fallback para o método anterior se houver erro
-                    combined_response = "\n".join([f"• {doc}" for doc in filtered_docs])
-                    response = {
-                        "response": combined_response,
-                        "sources": filtered_docs
-                    }
-            else:
-                response = {
-                    "response": "Não tenho informações suficientes para responder a essa pergunta com precisão.",
-                    "sources": []
-                }
-        else:
-            # Fallback para quando não há informações relevantes
-            response = {
-                "response": "Não tenho informações suficientes para responder a essa pergunta.",
-                "sources": []
+            # Salva métricas atualizadas
+            self._save_knowledge_metrics()
+            
+            return {
+                **result,
+                "analyzed_documents": len(analyzed_docs),
+                "knowledge_gaps": knowledge_gaps,
+                "topic_coverage": self.knowledge_metrics.topic_coverage
             }
             
-        return response
+        except Exception as e:
+            print(f"❌ Erro ao processar documentos: {str(e)}")
+            raise e
+    
+    def _analyze_new_documents(self, documents: List[str]) -> List[Dict[str, Any]]:
+        analyzed = []
+        
+        for i, doc in enumerate(documents):
+            analysis = {
+                'content': doc,
+                'id': f"doc_{i}_{datetime.now().timestamp()}",
+                'type': self._classify_document_type(doc),
+                'quality_score': self._assess_document_quality_advanced(doc),
+                'topics': self._extract_document_topics(doc),
+                'complexity': self._calculate_content_complexity(doc),
+                'informativeness': self._calculate_informativeness(doc),
+                'domain_relevance': self._assess_domain_relevance(doc),
+                'structural_analysis': self._analyze_document_structure(doc)
+            }
+            analyzed.append(analysis)
+        
+        return analyzed
+    
+    def _classify_document_type(self, doc: str) -> str:
+        doc_lower = doc.lower()
+        
+        if any(word in doc_lower for word in ['pdf:', 'arquivo:', '.pdf']):
+            return 'pdf_document'
+        elif any(word in doc_lower for word in ['web:', 'url:', 'http', 'www']):
+            return 'web_content'
+        elif any(word in doc_lower for word in ['curso', 'disciplina', 'programa', 'currículo']):
+            return 'academic_content'
+        elif any(word in doc_lower for word in ['contato', 'telefone', 'endereço', 'localização']):
+            return 'contact_information'
+        elif any(word in doc_lower for word in ['processo', 'procedimento', 'como', 'etapas']):
+            return 'procedural_content'
+        elif any(word in doc_lower for word in ['história', 'fundação', 'início', 'origem']):
+            return 'historical_content'
+        else:
+            return 'general_information'
+    
+    def _assess_document_quality_advanced(self, doc: str) -> float:
+        score = 0.5  # Base
+        
+        length = len(doc)
+        words = doc.split()
+        sentences = len(re.findall(r'[.!?]+', doc))
+        
+        # Tamanho apropriado
+        if 200 <= length <= 2000:
+            score += 0.15
+        elif 100 <= length < 200:
+            score += 0.1
+        elif length < 100:
+            score -= 0.2
+        
+        # Estrutura
+        if len(words) > 0:
+            avg_word_length = sum(len(word) for word in words) / len(words)
+            if 4 <= avg_word_length <= 8:
+                score += 0.1
+            
+            sentences_per_100_words = (sentences / len(words)) * 100 if words else 0
+            if 3 <= sentences_per_100_words <= 10:
+                score += 0.1
+        
+        # Riqueza de vocabulário
+        if len(words) > 10:
+            unique_words = len(set(word.lower() for word in words))
+            vocabulary_richness = unique_words / len(words)
+            if vocabulary_richness > 0.6:
+                score += 0.15
+        
+        # Informações estruturadas
+        if re.search(r'\\d+', doc):
+            score += 0.05
+        if re.search(r'[A-Z][a-z]+ [A-Z][a-z]+', doc):
+            score += 0.05
+        
+        # Qualidade educacional específica
+        educational_indicators = [
+            'campus', 'ifpe', 'curso', 'técnico', 'superior', 'ensino',
+            'educação', 'formação', 'estudante', 'professor'
+        ]
+        edu_score = sum(1 for indicator in educational_indicators if indicator in doc.lower())
+        score += min(edu_score * 0.02, 0.1)
+        
+        return max(0.1, min(1.0, score))
+    
+    def answer_query(self, query: str, conversation_history: List[Dict] = None) -> Dict[str, Any]:
+        if conversation_history is None:
+            conversation_history = []
+        
+        try:
+            # Primeiro verifica se é saudação ou pergunta sobre o MangoAI
+            fixed_response = self._detect_greetings_and_about(query)
+            if fixed_response:
+                return {
+                    "response": fixed_response,
+                    "sources": ["MangoAI - Sistema Interno"],
+                    "confidence": 1.0,
+                    "query_type": "saudacao_ou_sobre_ia"
+                }
+            
+            # Verifica se é solicitação de matriz curricular
+            curriculum_response = self._detect_curriculum_request(query)
+            if curriculum_response:
+                return curriculum_response
+            
+            # Busca básica usando o vector_db
+            results = self.vector_db.query(query, n_results=8)
+            
+            if not results or len(results['documents']) == 0:
+                return {
+                    "response": "Não encontrei informações específicas sobre sua pergunta. Poderia reformular ou ser mais específico?",
+                    "sources": [],
+                    "confidence": 0.0,
+                    "query_type": "sem_resultados"
+                }
+            
+            # Filtra documentos com similaridade mínima
+            threshold = 0.3
+            relevant_docs = []
+            
+            for i, distance in enumerate(results['distances']):
+                if distance >= threshold:
+                    relevant_docs.append({
+                        'text': results['documents'][i],
+                        'distance': distance,
+                        'quality': self._assess_document_quality_advanced(results['documents'][i]),
+                        'index': i
+                    })
+            
+            if not relevant_docs:
+                return {
+                    "response": "Não tenho informações suficientemente precisas para responder com confiança a essa pergunta.",
+                    "sources": [],
+                    "confidence": 0.0,
+                    "query_type": "baixa_relevancia"
+                }
+            
+            # Ordena por pontuação combinada
+            for doc in relevant_docs:
+                doc['combined_score'] = (doc['distance'] * 0.7) + (doc['quality'] * 0.3)
+            
+            relevant_docs.sort(key=lambda x: x['combined_score'], reverse=True)
+            relevant_docs = relevant_docs[:min(5, len(relevant_docs))]
+            
+            # Gera resposta usando método existente
+            consolidated_content = self._analyze_and_consolidate_content(
+                query, [doc['text'] for doc in relevant_docs]
+            )
+            response_text = self._generate_comprehensive_response(query, consolidated_content)
+            
+            # Calcula confiança
+            confidence = sum(doc['combined_score'] for doc in relevant_docs) / len(relevant_docs)
+            confidence = min(0.95, confidence)
+            
+            return {
+                "response": response_text,
+                "sources": [f"Documento {i+1}" for i in range(len(relevant_docs))],
+                "confidence": round(confidence, 2),
+                "query_type": "informativa",
+                "document_count": len(relevant_docs)
+            }
+            
+        except Exception as e:
+            print(f"Erro em answer_query: {str(e)}")
+            return {
+                "response": "Desculpe, ocorreu um erro ao processar sua pergunta. Tente novamente.",
+                "sources": [],
+                "confidence": 0.0,
+                "query_type": "erro"
+            }
+    
+    def get_knowledge_status(self) -> Dict[str, Any]:
+        """Retorna status completo da base de conhecimento"""
+        return {
+            "total_documents": self.knowledge_metrics.document_count,
+            "topic_coverage": self.knowledge_metrics.topic_coverage,
+            "knowledge_gaps": self.knowledge_metrics.knowledge_gaps,
+            "domain_expertise": self.domain_expertise,
+            "last_updated": self.knowledge_metrics.last_updated,
+            "config_status": self.response_config,
+            "readiness_score": self._calculate_readiness_score()
+        }
+    
+    def _calculate_readiness_score(self) -> float:
+        """Calcula pontuação de prontidão do sistema"""
+        score = 0.0
+        
+        # Pontuação baseada na quantidade de documentos
+        doc_score = min(1.0, self.knowledge_metrics.document_count / 50)
+        score += doc_score * 0.3
+        
+        # Pontuação baseada na cobertura de tópicos
+        topic_score = min(1.0, len(self.knowledge_metrics.topic_coverage) / 8)
+        score += topic_score * 0.4
+        
+        # Pontuação baseada na ausência de lacunas críticas
+        gap_penalty = min(0.3, len(self.knowledge_metrics.knowledge_gaps) * 0.05)
+        score += (0.3 - gap_penalty)
+        
+        return min(1.0, score)
+    
+    # Métodos auxiliares simplificados para manter compatibilidade
+    def _extract_document_topics(self, doc: str) -> List[str]:
+        """Extrai tópicos principais do documento"""
+        topics = []
+        doc_lower = doc.lower()
+        
+        topic_mapping = {
+            'cursos_academicos': ['curso', 'técnico', 'superior', 'graduação'],
+            'informacoes_campus': ['campus', 'igarassu', 'localização', 'endereço'],
+            'contato_comunicacao': ['telefone', 'email', 'contato'],
+            'processos_procedimentos': ['inscrição', 'matrícula', 'processo'],
+            'historia_institucional': ['história', 'fundação', 'início'],
+        }
+        
+        for topic, keywords in topic_mapping.items():
+            if any(keyword in doc_lower for keyword in keywords):
+                topics.append(topic)
+        
+        return topics if topics else ['informacao_geral']
+    
+    def _calculate_content_complexity(self, doc: str) -> float:
+        """Calcula complexidade do conteúdo"""
+        words = doc.split()
+        if not words:
+            return 0.0
+        
+        avg_word_length = sum(len(word) for word in words) / len(words)
+        long_words_ratio = sum(1 for word in words if len(word) > 7) / len(words)
+        
+        complexity = (avg_word_length / 10) + long_words_ratio
+        return min(1.0, complexity)
+    
+    def _calculate_informativeness(self, doc: str) -> float:
+        """Calcula o nível de informatividade do documento"""
+        score = 0.0
+        doc_lower = doc.lower()
+        
+        if any(indicator in doc_lower for indicator in ['é', 'está', 'oferece']):
+            score += 0.2
+        if re.findall(r'\\d+', doc):
+            score += 0.15
+        if any(indicator in doc_lower for indicator in ['telefone', 'email']):
+            score += 0.25
+        if any(indicator in doc_lower for indicator in ['campus igarassu', 'ifpe']):
+            score += 0.1
+        
+        return min(1.0, score)
+    
+    def _assess_domain_relevance(self, doc: str) -> Dict[str, float]:
+        doc_lower = doc.lower()
+        
+        domain_keywords = {
+            'educational': ['educação', 'ensino', 'curso', 'ifpe'],
+            'administrative': ['matrícula', 'processo', 'documentos'],
+            'institutional': ['campus', 'história', 'estrutura'],
+        }
+        
+        relevance = {}
+        for domain, keywords in domain_keywords.items():
+            matches = sum(1 for keyword in keywords if keyword in doc_lower)
+            relevance[domain] = min(1.0, matches / len(keywords))
+        
+        return relevance
+    
+    def _analyze_document_structure(self, doc: str) -> Dict[str, Any]:
+        analysis = {
+            'has_headings': bool(re.search(r'^#+ ', doc, re.MULTILINE)),
+            'has_contact_info': bool(re.search(r'\\(\\d+\\)\\s*\\d+', doc)),
+            'paragraph_count': len([p for p in doc.split('\\n\\n') if p.strip()]),
+            'structure_score': 0.5
+        }
+        
+        return analysis
+    
+    # Métodos existentes mantidos para compatibilidade
+    def _intelligent_document_processing(self, analyzed_docs: List[Dict]) -> List[str]:
+        return [doc['content'] for doc in analyzed_docs]
+    
+    def _detect_knowledge_gaps(self, processed_docs: List[str]) -> List[str]:
+        essential_topics = ['localização', 'contato', 'cursos', 'história']
+        all_content = ' '.join(processed_docs).lower()
+        
+        gaps = []
+        for topic in essential_topics:
+            if topic not in all_content:
+                gaps.append(f"Informações sobre {topic}")
+        
+        return gaps
+    
+    def _update_knowledge_metrics(self, processed_docs: List[str], gaps: List[str]):
+        self.knowledge_metrics.document_count += len(processed_docs)
+        self.knowledge_metrics.knowledge_gaps = gaps
+        self.knowledge_metrics.last_updated = datetime.now().isoformat()
+        
+        for doc in processed_docs:
+            doc_lower = doc.lower()
+            for category, keywords in self.knowledge_taxonomy.items():
+                if any(keyword in doc_lower for keyword in keywords):
+                    self.knowledge_metrics.topic_coverage[category] = \
+                        self.knowledge_metrics.topic_coverage.get(category, 0) + 1
+    
+    def _optimize_config_for_new_knowledge(self, processed_docs: List[str]):
+        avg_length = sum(len(doc) for doc in processed_docs) / len(processed_docs) if processed_docs else 0
+        
+        if avg_length > 1000:
+            self.response_config['similarity_threshold'] = max(0.6, 
+                self.response_config['similarity_threshold'] - 0.05)
+        elif avg_length < 300:
+            self.response_config['similarity_threshold'] = min(0.8, 
+                self.response_config['similarity_threshold'] + 0.05)
+    
+    # Métodos existentes para manter funcionamento atual
+    def _analyze_and_consolidate_content(self, query: str, documents: List[str]) -> Dict[str, Any]:
+        if not documents:
+            return {"consolidated_text": "", "content_type": "general"}
+        
+        primary_content = documents[0]
+        content_type = self._identify_query_type(query.lower())
+        
+        return {
+            "consolidated_text": primary_content,
+            "content_type": content_type
+        }
+    
+    def _identify_query_type(self, query: str) -> str:
+        if any(word in query for word in ["onde", "localização", "endereço"]):
+            return "localização"
+        elif any(word in query for word in ["curso", "graduação", "técnico"]):
+            return "cursos"
+        elif any(word in query for word in ["contato", "telefone", "email"]):
+            return "contato"
+        elif any(word in query for word in ["história", "quando"]):
+            return "história"
+        else:
+            return "geral"
+    
+    def _detect_greetings_and_about(self, query: str) -> Optional[str]:
+        """Detecta saudações e perguntas sobre o MangoAI e retorna resposta fixa."""
+        query_lower = query.lower().strip()
+        
+        # Saudações
+        greetings = [
+            "oi", "olá", "ola", "hello", "hi", "hey", "bom dia", "boa tarde", "boa noite",
+            "e aí", "eai", "opa", "salve", "como vai", "tudo bem", "beleza"
+        ]
+        
+        # Despedidas
+        farewells = [
+            "tchau", "adeus", "até logo", "até mais", "falou", "bye", "goodbye",
+            "até a próxima", "até breve", "obrigado", "obrigada", "valeu"
+        ]
+        
+        # Agradecimentos
+        thanks = [
+            "obrigado", "obrigada", "obrigadu", "valeu", "vlw", "thanks", "muito obrigado",
+            "brigadão", "brigada", "agradeço"
+        ]
+        
+        if any(greeting in query_lower for greeting in greetings):
+            return self._get_greeting_response()
+        
+        if any(farewell in query_lower for farewell in farewells):
+            return self._get_farewell_response()
+            
+        if any(thank in query_lower for thank in thanks):
+            return self._get_thanks_response()
+        
+        # Perguntas sobre o MangoAI
+        about_patterns = [
+            r"o que.*mango",
+            r"quem.*mango", 
+            r"que.*mango",
+            r"mango.*que",
+            r"mango.*serve",
+            r"mango.*para",
+            r"sobre.*mango",
+            r"você.*mango",
+            r"voce.*mango",
+            r"mango.*você",
+            r"mango.*voce",
+            r"quem.*você",
+            r"quem.*voce",
+            r"o que.*você",
+            r"o que.*voce",
+            r"para.*serve",
+            r"qual.*sua.*função",
+            r"qual.*funcao",
+            r"como.*funciona",
+            r"que.*ia.*essa",
+            r"que.*inteligencia",
+            r"quem.*criou",
+            r"quem.*desenvolveu"
+        ]
+        
+        for pattern in about_patterns:
+            if re.search(pattern, query_lower):
+                return self._get_about_response()
+        
+        return None
+        
+    def _detect_curriculum_request(self, query: str) -> Optional[Dict[str, Any]]:
+        """Detecta solicitações de matriz curricular e retorna PDF se disponível."""
+        query_lower = query.lower().strip()
+        
+        # Padrões que indicam solicitação de matriz curricular
+        curriculum_patterns = [
+            r"matriz.*curricular",
+            r"grade.*curricular", 
+            r"estrutura.*curricular",
+            r"currículo.*curso",
+            r"disciplinas.*curso",
+            r"matérias.*curso",
+            r"disciplinas.*\w+",
+            r"estrutura.*\w+",
+            r"grade.*\w+",
+            r"matriz.*\w+"
+        ]
+        
+        # Verifica se a query corresponde a um padrão de matriz curricular
+        is_curriculum_request = any(re.search(pattern, query_lower) for pattern in curriculum_patterns)
+        
+        if not is_curriculum_request:
+            return None
+        
+        # Tenta identificar o curso específico na query
+        course_identified = self._identify_course_from_query(query_lower)
+        
+        if course_identified:
+            # Busca a matriz curricular correspondente
+            curriculum_file = self._find_curriculum_file(course_identified)
+            
+            if curriculum_file:
+                response_text = f"📋 **Matriz Curricular - {curriculum_file['courseName']}**\n\n"
+                response_text += f"Encontrei a matriz curricular do curso **{curriculum_file['courseName']}** ({curriculum_file['courseType']}).\n\n"
+                response_text += f"📎 **[Download da Matriz Curricular]({curriculum_file['filePath']})**\n\n"
+                response_text += "Clique no link acima para baixar o arquivo PDF com a matriz curricular completa do curso.\n\n"
+                response_text += "*Se você está usando um celular, o arquivo será baixado automaticamente ou você pode visualizá-lo no navegador.*"
+                
+                return {
+                    "response": response_text,
+                    "sources": ["Sistema de Matrizes Curriculares"],
+                    "confidence": 0.95,
+                    "query_type": "matriz_curricular",
+                    "curriculum_file": curriculum_file
+                }
+        
+        # Se não identificou o curso específico, lista cursos disponíveis
+        available_curricula = self._get_available_curricula()
+        
+        if available_curricula:
+            response_text = "📋 **Matrizes Curriculares Disponíveis**\n\n"
+            response_text += "Temos matrizes curriculares disponíveis para os seguintes cursos:\n\n"
+            
+            for curriculum in available_curricula:
+                response_text += f"🎓 **{curriculum['courseName']}** ({curriculum['courseType']})\n"
+                response_text += f"📎 [Download PDF]({curriculum['filePath']})\n\n"
+            
+            response_text += "*Clique no link de download do curso desejado para obter a matriz curricular.*"
+            
+            return {
+                "response": response_text,
+                "sources": ["Sistema de Matrizes Curriculares"],
+                "confidence": 0.90,
+                "query_type": "lista_matrizes_curriculares"
+            }
+        else:
+            return {
+                "response": "📋 **Matrizes Curriculares**\n\nNo momento não temos matrizes curriculares disponíveis no sistema. Entre em contato com a coordenação do curso ou secretaria acadêmica para obter essas informações.\n\n📞 Para mais informações, você pode entrar em contato diretamente com o campus.",
+                "sources": ["Sistema de Matrizes Curriculares"],
+                "confidence": 0.80,
+                "query_type": "matriz_curricular_indisponivel"
+            }
+    
+    def _identify_course_from_query(self, query_lower: str) -> Optional[str]:
+        """Identifica o curso específico mencionado na query."""
+        # Mapeamento de termos comuns para nomes de cursos
+        course_mappings = {
+            'tsi': 'Tecnologia em Sistemas para Internet',
+            'sistemas para internet': 'Tecnologia em Sistemas para Internet',
+            'sistemas internet': 'Tecnologia em Sistemas para Internet',
+            'tecnologia sistemas internet': 'Tecnologia em Sistemas para Internet',
+            'informática para internet': 'Técnico em Informática para Internet',
+            'informatica internet': 'Técnico em Informática para Internet',
+            'ipi': 'Técnico em Informática para Internet',
+            'técnico informática': 'Técnico em Informática para Internet',
+            'logística': 'Técnico em Logística',
+            'logistica': 'Técnico em Logística',
+            'técnico logística': 'Técnico em Logística',
+            'química': 'Técnico em Química',
+            'quimica': 'Técnico em Química',
+            'técnico química': 'Técnico em Química',
+            'gestão qualidade': 'Tecnologia em Gestão da Qualidade',
+            'gestao qualidade': 'Tecnologia em Gestão da Qualidade',
+            'qualidade': 'Tecnologia em Gestão da Qualidade',
+            'administração': 'Bacharelado em Administração',
+            'administracao': 'Bacharelado em Administração',
+            'bacharelado administração': 'Bacharelado em Administração',
+            'almoxarife': 'Almoxarife',
+            'operador computador': 'Operador de Computador'
+        }
+        
+        for key, course_name in course_mappings.items():
+            if key in query_lower:
+                return course_name
+        
+        return None
+    
+    def _find_curriculum_file(self, course_name: str) -> Optional[Dict]:
+        """Busca o arquivo de matriz curricular para o curso especificado."""
+        try:
+            curricula_file = "../frontend/data/curricula.json"
+            
+            if not os.path.exists(curricula_file):
+                return None
+            
+            with open(curricula_file, 'r', encoding='utf-8') as f:
+                curricula = json.load(f)
+            
+            # Busca exata pelo nome do curso
+            for curriculum in curricula:
+                if curriculum['courseName'].lower() == course_name.lower():
+                    return curriculum
+            
+            # Busca parcial se não encontrou exata
+            for curriculum in curricula:
+                if course_name.lower() in curriculum['courseName'].lower():
+                    return curriculum
+            
+            return None
+            
+        except Exception as e:
+            print(f"Erro ao buscar matriz curricular: {str(e)}")
+            return None
+    
+    def _get_available_curricula(self) -> List[Dict]:
+        """Retorna lista de matrizes curriculares disponíveis."""
+        try:
+            curricula_file = "../frontend/data/curricula.json"
+            
+            if not os.path.exists(curricula_file):
+                return []
+            
+            with open(curricula_file, 'r', encoding='utf-8') as f:
+                curricula = json.load(f)
+            
+            # Ordena por nome do curso
+            curricula.sort(key=lambda x: x['courseName'])
+            
+            return curricula
+            
+        except Exception as e:
+            print(f"Erro ao listar matrizes curriculares: {str(e)}")
+            return []
+    
+    def _get_greeting_response(self) -> str:
+        """Retorna uma saudação aleatória do MangoAI."""
+        greetings = [
+            "Olá! 👋 Sou o MangoAI, sua assistente virtual do IFPE Campus Igarassu! Como posso ajudar você hoje?",
+            "Oi! 😊 MangoAI aqui! Estou pronto para esclarecer suas dúvidas sobre o IFPE. Em que posso ser útil?",
+            "Seja bem-vindo(a)! 🎓 Sou o MangoAI e estou aqui para auxiliar com informações do instituto. Como posso ajudar?",
+            "Olá! 🍋 MangoAI na área! Pronto para responder suas perguntas sobre o IFPE Campus Igarassu. O que você gostaria de saber?",
+            "Oi! Tudo bem? 😄 Sou o MangoAI, sua IA assistente desenvolvida pelos estudantes do IFPE. Como posso te ajudar hoje?"
+        ]
+        return random.choice(greetings)
+    
+    def _get_farewell_response(self) -> str:
+        """Retorna uma despedida aleatória do MangoAI."""
+        farewells = [
+            "Até logo! 👋 Foi um prazer ajudar você. Sempre que precisar de informações sobre o IFPE, estarei aqui!",
+            "Tchau! 😊 Espero ter sido útil. Volte sempre que tiver dúvidas sobre o instituto!",
+            "Até mais! 🎓 Continue seus estudos e lembre-se: o MangoAI está sempre disponível para ajudar!",
+            "Até breve! 🍋 Foi ótimo conversar com você. Sucesso nos seus estudos no IFPE!",
+            "Falou! 😄 Qualquer dúvida sobre o IFPE Campus Igarassu, é só chamar o MangoAI!"
+        ]
+        return random.choice(farewells)
+    
+    def _get_thanks_response(self) -> str:
+        """Retorna uma resposta de agradecimento do MangoAI."""
+        thanks_responses = [
+            "Por nada! 😊 Fico feliz em ajudar! É para isso que estou aqui. Precisando de mais alguma coisa?",
+            "Imagina! 👍 Foi um prazer esclarecer suas dúvidas. O MangoAI está sempre à disposição!",
+            "De nada! 🎓 Ajudar a comunidade do IFPE é minha missão. Conte comigo sempre!",
+            "Que isso! 🍋 Adoro poder ser útil. Se surgir mais alguma dúvida, é só perguntar!",
+            "Disponha! 😄 Estou aqui para isso mesmo. Sucesso nos seus estudos!"
+        ]
+        return random.choice(thanks_responses)
+    
+    def _get_about_response(self) -> str:
+        """Retorna informação sobre o MangoAI."""
+        return """🥭 **Sobre o MangoAI**
 
-    def _format_response(self, prompt, documents, query):
-        """
-        Método aprimorado para formatar respostas de maneira mais natural e estruturada em parágrafos.
-        """
-        # Identifica o tema principal da pergunta
-        query_lower = query.lower()
+Olá! Eu sou o **MangoAI**, uma inteligência artificial especializada em informações do IFPE Campus Igarassu! 
+
+**Quem sou eu?**
+- Uma IA assistente desenvolvida por estudantes do 4º período de **Tecnologia em Sistemas para Internet (TSI)** do IFPE Campus Igarassu
+- Minha missão é ajudar estudantes, servidores e visitantes com informações sobre o instituto
+
+**O que posso fazer por você?**
+✅ Responder dúvidas sobre cursos e disciplinas
+✅ Informar sobre procedimentos acadêmicos  
+✅ Explicar regulamentos e normas
+✅ Fornecer informações de contato
+✅ Esclarecer sobre estrutura e funcionamento do campus
+✅ Auxiliar com datas e prazos importantes
+
+**Como funciono?**
+Utilizo tecnologia avançada de processamento de linguagem natural para analisar documentos oficiais do IFPE e fornecer respostas precisas e atualizadas.
+
+Desenvolvido com 💚 pelos estudantes de TSI do IFPE Igarassu!
+
+*Como posso ajudar você hoje?* 😊"""
+    
+    def _generate_comprehensive_response(self, query: str, consolidated_content: Dict) -> str:
+        content = consolidated_content["consolidated_text"]
+        content_type = consolidated_content["content_type"]
         
-        # Extrai e organiza informações dos documentos
-        key_info = []
-        topics = set()
+        structured_info = self._extract_structured_information(content)
         
-        # Identifica termos-chave mais abrangentes para agrupar informações relacionadas
-        topic_groups = {
-            'institucional': ['ifpe', 'campus', 'igarassu', 'recife', 'instituição'],
-            'acadêmico': ['curso', 'disciplina', 'professor', 'aula', 'estudante', 'matrícula', 'ensino'],
-            'assistente': ['mango', 'assistente', 'virtual', 'ai', 'inteligência artificial'],
-            'calendário': ['data', 'prazo', 'período', 'evento', 'horário'],
-            'serviços': ['biblioteca', 'restaurante', 'laboratório', 'bolsa', 'auxílio']
-        }
-        
-        # Dicionário para armazenar informações agrupadas por tópico
-        grouped_info = {topic: [] for topic in topic_groups.keys()}
-        
-        # Processar e categorizar informações dos documentos
-        for doc in documents:
-            # Remove pontuações excessivas e espaços extras
-            clean_doc = ' '.join(doc.split())
-            clean_doc = re.sub(r'\.+', '.', clean_doc)  # Remove múltiplos pontos
-            clean_doc = re.sub(r'\s+', ' ', clean_doc)  # Remove múltiplos espaços
-            
-            # Categoriza o documento nos grupos de tópicos
-            for topic, keywords in topic_groups.items():
-                if any(keyword in clean_doc.lower() for keyword in keywords):
-                    grouped_info[topic].append(clean_doc)
-                    for keyword in keywords:
-                        if keyword in clean_doc.lower():
-                            topics.add(keyword)
-            
-            # Adiciona à lista geral de informações
-            key_info.append(clean_doc)
-        
-        # Introduções diversificadas por tipo de pergunta
-        intros = {
-            "como": [
-                "Sobre o que você perguntou, ",
-                "Em relação à sua dúvida, ",
-                "Respondendo à sua pergunta, "
-            ],
-            "qual": [
-                "Com base nas informações disponíveis, ",
-                "De acordo com os dados institucionais, ",
-                "Conforme os registros, "
-            ],
-            "onde": [
-                "Sobre a localização que você perguntou, ",
-                "Em relação ao local mencionado, ",
-                "Quanto ao lugar que você busca, "
-            ],
-            "quem": [
-                "Sobre a pessoa que você mencionou, ",
-                "Em relação ao profissional citado, ",
-                "A respeito desse contato, "
-            ],
-            "quando": [
-                "Sobre a data que você perguntou, ",
-                "Em relação ao período mencionado, ",
-                "Quanto ao cronograma, "
-            ],
-            "pergunta": [
-                "Sobre o que você gostaria de saber, ",
-                "Em resposta à sua questão, ",
-                "A respeito da sua pergunta, "
-            ],
-            "default": [
-                "Sobre esse assunto, ",
-                "A respeito disso, ",
-                "Em relação ao tema, "
-            ]
-        }
-        
-        # Seleciona introdução apropriada
-        if 'como' in query_lower:
-            intro = random.choice(intros["como"])
-        elif any(word in query_lower for word in ['qual', 'quais']):
-            intro = random.choice(intros["qual"])
-        elif 'onde' in query_lower:
-            intro = random.choice(intros["onde"])
-        elif 'quem' in query_lower:
-            intro = random.choice(intros["quem"])
-        elif 'quando' in query_lower:
-            intro = random.choice(intros["quando"])
-        elif '?' in query:
-            intro = random.choice(intros["pergunta"])
+        if content_type == "cursos":
+            return self._format_courses_response(structured_info)
+        elif content_type == "localização":
+            return self._format_location_response(structured_info)
+        elif content_type == "contato":
+            return self._format_contact_response(structured_info)
+        elif content_type == "história":
+            return self._format_history_response(structured_info)
         else:
-            intro = random.choice(intros["default"])
+            return self._format_general_response(structured_info, content)
+    
+    def _extract_structured_information(self, content: str) -> Dict[str, Any]:
+        info = {}
+        lines = content.split('\\n')
         
-        # Construção da resposta por parágrafos
-        if len(documents) == 1:
-            # Com apenas um documento, formata de maneira mais direta
-            content = key_info[0]
-            # Remove possíveis repetições no início
-            for word in ["o", "a", "os", "as", "um", "uma", "uns", "umas"]:
-                if content.lower().startswith(word + " ") and intro.lower().endswith(word + " "):
-                    content = content[len(word) + 1:]
+        technical_prefixes = ['fonte:', 'url:', 'tipo:', 'palavras-chave:']
+        clean_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
             
-            # Divide em sentenças e reorganiza em parágrafos lógicos (2-3 frases por parágrafo)
-            sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', content) if s.strip()]
+            line_lower = line.lower()
+            if any(line_lower.startswith(prefix) for prefix in technical_prefixes):
+                continue
+            if line.startswith('http') and '://' in line:
+                continue
             
-            if len(sentences) <= 3:
-                # Se temos poucas frases, mantemos em um único parágrafo
-                formatted_response = f"{intro}{' '.join(sentences)}"
-            else:
-                # Divide em dois parágrafos
-                first_para = sentences[:len(sentences)//2]
-                second_para = sentences[len(sentences)//2:]
-                
-                formatted_response = f"{intro}{' '.join(first_para)}\n\n{' '.join(second_para)}"
-                
-            return formatted_response
+            clean_lines.append(line)
+        
+        # Extrai informações específicas
+        for line in clean_lines:
+            line_lower = line.lower()
             
-        else:
-            # Para múltiplas fontes, organizamos por tópicos e criamos parágrafos temáticos
-            # Remove frases duplicadas ou muito similares
-            all_sentences = []
-            for doc in key_info:
-                sentences = [s.strip() for s in re.split(r'(?<=[.!?])\s+', doc) if s.strip()]
-                all_sentences.extend(sentences)
+            if any(word in line_lower for word in ['rodovia', 'rua', 'avenida']):
+                info['endereco'] = line
             
-            unique_sentences = []
-            for sentence in all_sentences:
-                is_duplicate = False
-                for existing in unique_sentences:
-                    if len(sentence) > 15 and (sentence in existing or existing in sentence):
-                        is_duplicate = True
-                        break
-                if not is_duplicate and sentence:
-                    unique_sentences.append(sentence)
+            if '(' in line and ')' in line and len([c for c in line if c.isdigit()]) >= 8:
+                phone_match = re.search(r'\\(\\d{2}\\)\\s*\\d{4,5}[-\\s]*\\d{4}', line)
+                if phone_match:
+                    info['telefone'] = phone_match.group()
             
-            # Organiza as sentenças por relevância e tópico
-            primary_info = []
-            secondary_info = []
+            if 'igarassu' in line_lower and len(line) > 20:
+                info.setdefault('campus_info', []).append(line)
             
-            # Identifica sentenças principais com base na pergunta
-            query_keywords = set(query_lower.split()) - {'o', 'a', 'os', 'as', 'e', 'é', 'são', 'como', 'qual', 'quais', 'quando', 'onde', 'quem', 'por', 'que', 'para'}
-            
-            for sentence in unique_sentences:
-                sentence_lower = sentence.lower()
-                
-                # Se contém palavras-chave da pergunta, é informação primária
-                if any(keyword in sentence_lower for keyword in query_keywords):
-                    primary_info.append(sentence)
-                else:
-                    secondary_info.append(sentence)
-            
-            # Limita o número total de sentenças para manter a resposta concisa
-            if len(primary_info) > 3:
-                primary_info = primary_info[:3]
-            
-            if len(secondary_info) > 3:
-                secondary_info = secondary_info[:3]
-            
-            # Constrói a resposta em formato de parágrafos
-            paragraphs = []
-            
-            # Primeiro parágrafo com informação principal
-            if primary_info:
-                paragraphs.append(f"{intro}{' '.join(primary_info)}")
-            
-            # Segundo parágrafo com informação complementar
-            if secondary_info:
-                paragraphs.append(' '.join(secondary_info))
-            
-            # Se não temos parágrafos suficientes, usamos a abordagem anterior
-            if not paragraphs:
-                combined_info = ". ".join(unique_sentences)
-                if not combined_info.endswith('.'):
-                    combined_info += '.'
-                
-                return f"{intro}{combined_info}"
-            
-            # Retorna resposta formatada em parágrafos
-            formatted_response = "\n\n".join(paragraphs)
-            
-            # Verifica se a resposta não está muito longa
-            if len(formatted_response) > 800:
-                # Tenta cortar no fim de um parágrafo
-                cutoff = formatted_response[:797].rfind('\n\n')
-                if cutoff > 300:
-                    formatted_response = formatted_response[:cutoff]
-                else:
-                    # Tenta cortar no fim de uma frase
-                    cutoff = formatted_response[:797].rfind('.')
-                    if cutoff > 300:
-                        formatted_response = formatted_response[:cutoff + 1]
-                    else:
-                        formatted_response = formatted_response[:797] + "..."
-            
-            return formatted_response
+            if any(word in line_lower for word in ['técnico em', 'bacharelado', 'tecnologia em']):
+                info.setdefault('cursos', []).append(line)
+        
+        # Parágrafos informativos
+        clean_content = '\n'.join(clean_lines)
+        paragraphs = [p.strip() for p in clean_content.split('\n\n') if len(p.strip()) > 50]
+        info['paragraphs'] = paragraphs[:3]
+        
+        return info
+    
+    def _format_courses_response(self, info: Dict) -> str:
+        response = "🎓 **Cursos Oferecidos no Campus Igarassu**\n\n"
+        
+        response += "**📚 Cursos Técnicos Subsequentes:**\n"
+        response += "• Técnico em Logística\n"
+        response += "• Técnico em Informática para Internet (IPI)\n"
+        response += "• Técnico em Química\n\n"
+        
+        response += "**🎓 Cursos Superiores:**\n"
+        response += "• Tecnologia em Gestão da Qualidade\n"
+        response += "• Tecnologia em Sistemas para Internet (TSI)\n"
+        response += "• Bacharelado em Administração\n\n"
+        
+        response += "**📋 Qualificação Profissional:**\n"
+        response += "• Almoxarife\n"
+        response += "• Operador de Computador\n\n"
+        
+        response += "**🔧 Formação Inicial e Continuada (FIC):**\n"
+        response += "• Cursos pelo Programa Nacional de Acesso ao Ensino Técnico e Emprego (Pronatec)"
+        
+        return response
+    
+    def _format_location_response(self, info: Dict) -> str:
+        response = "📍 **Localização do Campus Igarassu**\n\n"
+        
+        if 'endereco' in info:
+            response += f"O campus está localizado na **{info['endereco']}**.\n\n"
+        
+        if 'campus_info' in info:
+            response += "**Sobre o Campus:**\n"
+            for item in info['campus_info'][:2]:
+                response += f"• {item}\n"
+        
+        return response.strip()
+    
+    def _format_contact_response(self, info: Dict) -> str:
+        response = "📞 **Como Entrar em Contato**\n\n"
+        
+        if 'telefone' in info:
+            response += f"**Telefone:** {info['telefone']}\n\n"
+        
+        if 'endereco' in info:
+            response += f"**Endereço:** {info['endereco']}\n\n"
+        
+        response += "**Outras Formas de Contato:**\n"
+        response += "• Visite o campus pessoalmente\n"
+        response += "• Acesse o portal oficial do IFPE"
+        
+        return response.strip()
+    
+    def _format_history_response(self, info: Dict) -> str:
+        response = "📚 **História do Campus Igarassu**\n\n"
+        
+        if 'paragraphs' in info:
+            for paragraph in info['paragraphs'][:2]:
+                if len(paragraph) > 80:
+                    response += f"{paragraph}\n\n"
+        
+        return response.strip()
+    
+    def _format_general_response(self, info: Dict, full_content: str) -> str:
+        if 'paragraphs' in info and info['paragraphs']:
+            response = ""
+            for paragraph in info['paragraphs'][:2]:
+                if len(paragraph) > 50:
+                    response += f"{paragraph}\n\n"
+            return response.strip()
+        
+        # Fallback para conteúdo limpo
+        lines = full_content.split('\n')
+        clean_lines = []
+        
+        for line in lines:
+            line = line.strip()
+            if (line and 
+                not line.lower().startswith(('fonte:', 'url:', 'tipo:')) and
+                not line.startswith('http') and
+                len(line) > 20):
+                clean_lines.append(line)
+        
+        if clean_lines:
+            return '\n'.join(clean_lines[:3])
+        
+        return "Informações disponíveis sobre o Campus Igarassu do IFPE."
